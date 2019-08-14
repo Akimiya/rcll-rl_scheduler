@@ -8,7 +8,6 @@ import traceback
 from collections import OrderedDict
 
 import protobuf.build as pb
-import protobuf.build.MachineInfo_pb2
 
 # connection parameters
 TCP_IP = "192.168.56.102"
@@ -125,38 +124,4 @@ if __name__ == "__main__":
             print("HAD EXCEPTION:\n{}".format(e))
             print(traceback.format_exc())
 
-
-try:
-    while True:
-        data = s.recv(BUFFER_SIZE)
-        print("GOT: {}".format(data))
-except KeyboardInterrupt:
-    print("closing...")
-s.close()
-
-msgs = []
-while True:
-    msgs.append(s.recv(BUFFER_SIZE))
-
-for m in msgs:
-    print(m)
-    time.sleep(1)
-
-sock = s
-sz = 0
-while True:
-    vbyte, = struct.unpack('b', sock.recv(1))
-    sz = (vbyte << 7) + (vbyte & 0x7f)
-    if not vbyte & 0x80:
-        break
-data = []
-while sz:
-    buf = sock.recv(sz)
-    if not buf:
-        raise ValueError("Buffer receive truncated")
-    data.append(buf)
-    sz -= len(buf)
-
-
-machine_info.FromString(msgs[7])
 
