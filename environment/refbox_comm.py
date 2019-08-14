@@ -7,6 +7,7 @@ import struct
 from collections import OrderedDict
 
 import protobuf.build as pb
+import protobuf.build.BeaconSignal_pb2
 
 # connection parameters
 TCP_IP = "192.168.56.102"
@@ -24,7 +25,11 @@ PACKET_LAYOUT["component_ID"] = 2
 PACKET_LAYOUT["message_type"] = 2
 PACKET_LAYOUT["protobuf"] = None
 
-
+# define message ID and type
+COMPONENTS = {}
+for comp in pb.modules:
+    obj = getattr(pb, comp[:-3]) # TODO: lets not do that
+    
 
 if __name__ == "__main__":
     # create socket and build connection
