@@ -5,6 +5,7 @@ import socket
 import time
 import struct
 import traceback
+import datetime as dt
 from collections import OrderedDict
 
 import protobuf.build as pb
@@ -50,6 +51,8 @@ if __name__ == "__main__":
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect((TCP_IP, TCP_PORT))
     print("Connection started: \n{}\n\n".format(s))
+    
+    message_file = open("messages.log", "a")
     
     # manage unpacking messages
     data = b""
@@ -104,7 +107,7 @@ if __name__ == "__main__":
                 try:
                     component = COMPONENTS[(message["component_ID"], message["message_type"])]
                 except KeyError as e:
-                    print("We cound not find given component ID and message type combination!")
+                    print("We cound not find given component ID and message type combination!\n{}".format(message))
                     raise e
                 
                 # create the protobuf object of the appropriate type
@@ -115,8 +118,10 @@ if __name__ == "__main__":
                 
                 ##### proccess protobuff message
                 # TODO: process
-                print("############################## We got a <{}> message:\n{}".format(component, pb_obj))
-                time.sleep(1)
+                print("We got a <{}> message".format(component, pb_obj))
+#                time.sleep(1)
+                message_file.write("----------------------------------------------------------\n{} - <{}>:\n{}".format(dt.datetime.now(), component, pb_obj))
+                
         
                 # remove proccessed message from the buffer
                 data = data[pos:]
@@ -124,4 +129,5 @@ if __name__ == "__main__":
             print("HAD EXCEPTION:\n{}".format(e))
             print(traceback.format_exc())
 
-
+    message_file.close()
+    s.close()
