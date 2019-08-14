@@ -1,6 +1,7 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*- 
 
 import os
-import importlib
 
 
 # find all module files
@@ -9,6 +10,7 @@ for f in os.listdir(os.path.dirname(os.path.realpath(__file__))):
     if f.endswith('.py') and not f.endswith("__.py"):
         modules.append(f)
 
+# newly compiled 
 def reformat_imports(files):
     current_dir = os.path.dirname(os.path.realpath(__file__)) + "/"
 
@@ -30,7 +32,7 @@ def reformat_imports(files):
                             found_lines += 1
                             break
 
-                    # close early
+                    # close early TODO: also stop when file has none OR is already modified
                     if found_lines_last != 0 and found_lines_last == found_lines:
                         # continue from current position and write
                         r = module_in.read()
@@ -42,3 +44,10 @@ def reformat_imports(files):
         os.rename(current_dir + f_out, current_dir + f_in)
 
 reformat_imports(modules)
+
+#cleanup
+del f, os
+
+# import all remaining files
+__all__ = [x[:-3] for x in modules]
+from . import *

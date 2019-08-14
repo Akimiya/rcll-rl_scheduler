@@ -7,20 +7,8 @@ import struct
 from collections import OrderedDict
 
 import protobuf.build as pb
-import protobuf.build.Team_pb2 as pb_team
-import protobuf.build.Time_pb2 as pb_time
-import protobuf.build.Pose2D_pb2 as pb_pose
-import protobuf.build.BeaconSignal_pb2 as pb_beacon_signal
-import protobuf.build.MachineInfo_pb2 as pb_machine_info
 
-
-team = pb_team.Team
-time = pb_time.Time()
-pose = pb_pose.Pose2D()
-beacon_signal = pb_beacon_signal.BeaconSignal()
-machine_info = pb_machine_info.MachineInfo()
-
-# setup connection
+# connection parameters
 TCP_IP = "192.168.56.102"
 TCP_PORT = 4444
 BUFFER_SIZE = 1024 * 10
@@ -36,6 +24,8 @@ PACKET_LAYOUT["component_ID"] = 2
 PACKET_LAYOUT["message_type"] = 2
 PACKET_LAYOUT["protobuf"] = None
 
+
+
 if __name__ == "__main__":
     # create socket and build connection
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -50,32 +40,41 @@ if __name__ == "__main__":
         message = dict(PACKET_LAYOUT)
         pos = 0 # position inside current data
         for field_name, field_size in PACKET_LAYOUT.items():
+            
+            # as we are ordered the protobuf part is last
+            if field_name == "protobuf":
+                #take the raw bytes
+                protobuf_size = message["payload_size"] - 4
+                message[field_name] = data[pos:pos + protobuf_size] # minus 4 for the header
+                pos += protobuf_size
+                continue
+            
             # reconstructed byte part
             recon = data[pos:pos + field_size]
-            
+                
             # distinguish format
-            form = ">"
+            form = ">" # bytes in big-endian order
             if field_size == 1:
                 form += 'B'
             elif field_size == 2:
                 form += 'H'
             elif field_size == 4:
                 form += 'I'
-            else:
-                form = None # take raw bytes
             
-            if form != None:
-                # convert to proper size
-                up = struct.unpack(form, recon)
-                assert len(up) == 1
-                message[field_name] = up[0]
-            else:
-                message[field_name] = message["payload_size"]
-                
+            # convert to proper size
+            up = struct.unpack(form, recon)
+            assert len(up) == 1
+            message[field_name] = up[0]
 
             pos += field_size
 
+    
 
+    team = pb_team.Team
+    time = pb_time.Time()
+    pose = pb_pose.Pose2D()
+    beacon_signal = pb_beacon_signal.BeaconSignal()
+    machine_info = pb_machine_info.MachineInfo()
 
 
 
