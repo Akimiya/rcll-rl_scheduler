@@ -74,13 +74,25 @@ def create_byte_form(field_size):
 
 # pb_msg: message asa protobuf class
 def send_pb_message(pb_msg, s):
-#    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-#    sock.sendto(msg_bytes, (TCP_IP, 4446))
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.sendto(msg_bytes, (TCP_IP, 4446))
     
 #    [key for key, value in COMPONENTS.items() if value == 'LogMessage'][0]
-    set_game_state = pb.GameState_pb2.SetGameState()
-    set_game_state.state = pb.GameState_pb2.GameState.WAIT_START
-    pb_msg = set_game_state
+#    set_game_state = pb.GameState_pb2.SetGameState()
+#    set_game_state.state = pb.GameState_pb2.GameState.WAIT_START
+#    pb_msg = set_game_state
+    
+#    add_base = pb.MachineCommands_pb2.MachineAddBase()
+#    add_base.machine_name = "ASD"
+#    pb_msg = add_base
+    
+#    prepare_RS = pb.MachineInstructions_pb2.PrepareInstructionRS()
+#    prepare_RS.ring_color = 4
+    prepare_machine = pb.MachineInstructions_pb2.PrepareMachine()
+    prepare_machine.team_color = 1
+    prepare_machine.machine = "M-RS1"
+    prepare_machine.instruction_rs.ring_color = 4
+    pb_msg = prepare_machine
     
     
     # construct message
@@ -173,6 +185,7 @@ if __name__ == "__main__":
                     assert read == message["payload_size"] - 4
                 
                     if component == "MachineInfo":
+                        print("We got a <{}> message:\n{}".format(component, pb_obj))
                         machines = {"SS": deepcopy(MACHINE),
                                     "CS1": deepcopy(MACHINE),
                                     "CS2": deepcopy(MACHINE),
