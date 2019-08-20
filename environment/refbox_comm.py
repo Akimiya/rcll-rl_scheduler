@@ -7,6 +7,7 @@ import struct
 import traceback
 import datetime as dt
 from collections import OrderedDict
+from copy import deepcopy # more performant then dict()
 
 import protobuf.build as pb
 
@@ -26,6 +27,12 @@ PACKET_LAYOUT["component_ID"] = 2
 PACKET_LAYOUT["message_type"] = 2
 PACKET_LAYOUT["protobuf_msg"] = None
 
+# base layout of needed machine fields
+MACHINE = {"state" : "",
+           "loaded" : 0, # number of bases loaded into a CS
+           "lights" : [0, 0, 0] # ordered list color-index: 0-> RED, 1-> YELLOW, 2-> GREEN
+           }
+
 # define message ID and type
 COMPONENTS = {
         (2003, 1) : "LogMessage",
@@ -44,7 +51,10 @@ COMPONENTS = {
         (2000, 3) : "VersionInfo",
         (2000, 56) : "WorkpieceInfo"
         }
-    
+
+NOT_NEED = ["RobotInfo",
+            "VersionInfo",
+            "LogMessage"]
 
 if __name__ == "__main__":
     # create socket and build connection
@@ -65,7 +75,7 @@ if __name__ == "__main__":
             # greater then 12 as we need at least 12 bytes for headers
             while have_data and len(data) >= 12:
                 ##### extract one message from data
-                message = dict(PACKET_LAYOUT)
+                message = deepcopy(PACKET_LAYOUT)
                 pos = 0 # position inside current data buffer
                 for field_name, field_size in PACKET_LAYOUT.items():
                     
@@ -118,9 +128,33 @@ if __name__ == "__main__":
                 
                 ##### proccess protobuff message
                 # TODO: process
-                print("We got a <{}> message".format(component, pb_obj))
+#                print("We got a <{}> message".format(component, pb_obj))
+                if component not in NOT_NEED:
+                    if component == "MachineInfo":
+                        machines = {"SS": dict()}
+                        for m in pb_obj.machines:
+                            
+                            
+                            
+                            
+                            # filter just one activve team; here CYAN
+                            if m.name.startswith("C-"):
+                                state = m.state
+                                loaded = m.loaded_with
+                                # process the lights
+                                for x in m.lights:
+                                    # 0 is OFF, 1 is ON, 2 is BLINK => MachineDescripton.proto
+                                    lights[x.color] = x.state
+                                
+                                            
+                        assert False
+                        # process 
+                        
+                        
+#                        assert False
+                    print("We got a <{}> message:\n{}".format(component, pb_obj))
 #                time.sleep(1)
-                message_file.write("----------------------------------------------------------\n{} - <{}>:\n{}".format(dt.datetime.now(), component, pb_obj))
+#                message_file.write("----------------------------------------------------------\n{} - <{}>:\n{}".format(dt.datetime.now(), component, pb_obj))
                 
         
                 # remove proccessed message from the buffer
@@ -128,6 +162,7 @@ if __name__ == "__main__":
         except Exception as e:
             print("HAD EXCEPTION:\n{}".format(e))
             print(traceback.format_exc())
+            raise e
 
     message_file.close()
     s.close()
