@@ -49,12 +49,16 @@ COMPONENTS = {
         (2000, 30) : "RobotInfo",
         (2000, 327) : "SimTimeSync",
         (2000, 3) : "VersionInfo",
-        (2000, 56) : "WorkpieceInfo"
+        (2000, 56) : "WorkpieceInfo",
+        (2000, 62) : "MachineReportInfo" # NOTE: as no file named this way message would not parse anyway!
         }
 
 NOT_NEED = ["RobotInfo",
             "VersionInfo",
-            "LogMessage"]
+            "LogMessage",
+            "BeaconSignal",
+            "MachineReportInfo" # Not supported
+            ]
 
 if __name__ == "__main__":
     # create socket and build connection
@@ -120,39 +124,43 @@ if __name__ == "__main__":
                     print("We cound not find given component ID and message type combination!\n{}".format(message))
                     raise e
                 
-                # create the protobuf object of the appropriate type
-                pb_obj_constructor = getattr(getattr(pb, component + "_pb2"), component)
-                pb_obj = pb_obj_constructor() # a new object
-                read = pb_obj.ParseFromString(message["protobuf_msg"])
-                assert read == message["payload_size"] - 4
-                
                 ##### proccess protobuff message
-                # TODO: process
-#                print("We got a <{}> message".format(component, pb_obj))
                 if component not in NOT_NEED:
+                    # create the protobuf object of the appropriate type
+                    pb_obj_constructor = getattr(getattr(pb, component + "_pb2"), component)
+                    pb_obj = pb_obj_constructor() # a new object
+                    read = pb_obj.ParseFromString(message["protobuf_msg"])
+                    assert read == message["payload_size"] - 4
+                
                     if component == "MachineInfo":
-                        machines = {"SS": dict()}
+                        machines = {"SS": deepcopy(MACHINE),
+                                    "CS1": deepcopy(MACHINE),
+                                    "CS2": deepcopy(MACHINE),
+                                    "RS1": deepcopy(MACHINE),
+                                    "RS2": deepcopy(MACHINE),
+                                    "BS": deepcopy(MACHINE),
+                                    "DS": deepcopy(MACHINE)}
+
                         for m in pb_obj.machines:
-                            
-                            
-                            
-                            
                             # filter just one activve team; here CYAN
-                            if m.name.startswith("C-"):
-                                state = m.state
-                                loaded = m.loaded_with
+                            if m.name[0] == "C":
+                                mtype = m.name[2:] # string for type
+                                
+                                machines[mtype]["state"] = m.state
+                                machines[mtype]["loaded"] = m.loaded_with
                                 # process the lights
                                 for x in m.lights:
                                     # 0 is OFF, 1 is ON, 2 is BLINK => MachineDescripton.proto
-                                    lights[x.color] = x.state
+                                    machines[mtype]["lights"][x.color] = x.state
                                 
-                                            
-                        assert False
-                        # process 
-                        
-                        
-#                        assert False
-                    print("We got a <{}> message:\n{}".format(component, pb_obj))
+                        print("We got a <{}> message:\n{}".format(component, machines))
+                    
+                    elif component == "OrderInfo":
+                        orders = pb_obj.orders # we can work with givne struct here
+                    elif component == "GameState":
+                        print("We got a <{}> message:\nphase={}".format(component, pb_obj.phase))
+                    else:
+                        print("We got a <{}> message:\n{}".format(component, pb_obj))
 #                time.sleep(1)
 #                message_file.write("----------------------------------------------------------\n{} - <{}>:\n{}".format(dt.datetime.now(), component, pb_obj))
                 
