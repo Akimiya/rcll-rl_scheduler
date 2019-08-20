@@ -16,7 +16,7 @@ TCP_IP = "192.168.56.102"
 TCP_PORT = 4444
 BUFFER_SIZE = 1024
 
-# layout of the packet; NOTE: Order matters!!
+# layout of the packet, describing byte size; NOTE: Order matters!!
 PACKET_LAYOUT = OrderedDict()
 PACKET_LAYOUT["protocol_version"] = 1
 PACKET_LAYOUT["cipher"] = 1
@@ -30,7 +30,8 @@ PACKET_LAYOUT["protobuf_msg"] = None
 # base layout of needed machine fields
 MACHINE = {"state" : "",
            "loaded" : 0, # number of bases loaded into a CS
-           "lights" : [0, 0, 0] # ordered list color-index: 0-> RED, 1-> YELLOW, 2-> GREEN
+           "lights" : [0, 0, 0], # ordered list color-index: 0-> RED, 1-> YELLOW, 2-> GREEN
+           "ring_colors" : [] # only set for RS
            }
 
 # define message ID and type
@@ -60,6 +61,51 @@ NOT_NEED = ["RobotInfo",
             "MachineReportInfo" # Not supported
             ]
 
+# specifies how to encode the specific field
+def create_byte_form(field_size):
+    form = ">" # bytes in big-endian order
+    if field_size == 1:
+        form += 'B'
+    elif field_size == 2:
+        form += 'H'
+    elif field_size == 4:
+        form += 'I'
+    return form
+
+# pb_msg: message asa protobuf class
+def send_pb_message(pb_msg, s):
+#    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+#    sock.sendto(msg_bytes, (TCP_IP, 4446))
+    
+#    [key for key, value in COMPONENTS.items() if value == 'LogMessage'][0]
+    set_game_state = pb.GameState_pb2.SetGameState()
+    set_game_state.state = pb.GameState_pb2.GameState.WAIT_START
+    pb_msg = set_game_state
+    
+    
+    # construct message
+    message = dict(PACKET_LAYOUT)
+    message["protocol_version"] = 2
+    message["cipher"] = 0
+    message["reserved1"] = 0
+    message["reserved2"] = 0
+    message["payload_size"] = pb_msg.ByteSize() + 4
+    message["component_ID"] = pb_msg.COMP_ID
+    message["message_type"] = pb_msg.MSG_TYPE
+    message["protobuf_msg"] = pb_msg.SerializeToString()
+    
+    # encode long byte-string
+    msg_bytes = b""
+    for field_name, field_size in PACKET_LAYOUT.items():
+        # function has the definition of the field sizes
+        form = create_byte_form(field_size)
+        if field_name == "protobuf_msg":
+            msg_bytes += message[field_name]
+        else:
+            msg_bytes += struct.pack(form, message[field_name])
+    
+    return 0
+
 if __name__ == "__main__":
     # create socket and build connection
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -79,7 +125,7 @@ if __name__ == "__main__":
             # greater then 12 as we need at least 12 bytes for headers
             while have_data and len(data) >= 12:
                 ##### extract one message from data
-                message = deepcopy(PACKET_LAYOUT)
+                message = dict(PACKET_LAYOUT)
                 pos = 0 # position inside current data buffer
                 for field_name, field_size in PACKET_LAYOUT.items():
                     
@@ -99,13 +145,7 @@ if __name__ == "__main__":
                     recon = data[pos:pos + field_size]
                         
                     # distinguish format
-                    form = ">" # bytes in big-endian order
-                    if field_size == 1:
-                        form += 'B'
-                    elif field_size == 2:
-                        form += 'H'
-                    elif field_size == 4:
-                        form += 'I'
+                    form = create_byte_form(field_size)
                     
                     # convert to proper size
                     up = struct.unpack(form, recon)
@@ -124,7 +164,7 @@ if __name__ == "__main__":
                     print("We cound not find given component ID and message type combination!\n{}".format(message))
                     raise e
                 
-                ##### proccess protobuff message
+                ##### proccess incoming protobuff messages
                 if component not in NOT_NEED:
                     # create the protobuf object of the appropriate type
                     pb_obj_constructor = getattr(getattr(pb, component + "_pb2"), component)
@@ -148,21 +188,31 @@ if __name__ == "__main__":
                                 
                                 machines[mtype]["state"] = m.state
                                 machines[mtype]["loaded"] = m.loaded_with
+                                machines[mtype]["ring_colors"] = list(m.ring_colors)
                                 # process the lights
                                 for x in m.lights:
                                     # 0 is OFF, 1 is ON, 2 is BLINK => MachineDescripton.proto
                                     machines[mtype]["lights"][x.color] = x.state
-                                
+                        
+#                            if m.name == "C-RS1":
                         print("We got a <{}> message:\n{}".format(component, machines))
                     
                     elif component == "OrderInfo":
                         orders = pb_obj.orders # we can work with givne struct here
                     elif component == "GameState":
                         print("We got a <{}> message:\nphase={}".format(component, pb_obj.phase))
+                    elif component == "BeaconSignal":
+                        assert False
                     else:
                         print("We got a <{}> message:\n{}".format(component, pb_obj))
 #                time.sleep(1)
-#                message_file.write("----------------------------------------------------------\n{} - <{}>:\n{}".format(dt.datetime.now(), component, pb_obj))
+#                    message_file.write("----------------------------------------------------------\n{} - <{}>:\n{}".format(dt.datetime.now(), component, pb_obj))
+#                else:
+#                    pb_obj_constructor = getattr(getattr(pb, component + "_pb2"), component)
+#                    pb_obj = pb_obj_constructor() # a new object
+#                    read = pb_obj.ParseFromString(message["protobuf_msg"])
+#                    assert read == message["payload_size"] - 4
+#                    message_file.write("----------------------------------------------------------\n{} - <{}>:\n{}".format(dt.datetime.now(), component, pb_obj))
                 
         
                 # remove proccessed message from the buffer
