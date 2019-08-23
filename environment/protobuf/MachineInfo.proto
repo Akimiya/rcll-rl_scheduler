@@ -99,9 +99,9 @@ message Machine {
   optional PrepareInstructionRS instruction_rs = 18;
   optional PrepareInstructionCS instruction_cs = 19;
 
-	// more fine-grained exploration (only clients)
-	optional ExplorationState exploration_zone_state = 22;
-	optional ExplorationState exploration_rotation_state = 21;
+  // more fine-grained exploration (only clients)
+  optional ExplorationState exploration_zone_state = 22;
+  optional ExplorationState exploration_rotation_state = 21;
 
 }
 

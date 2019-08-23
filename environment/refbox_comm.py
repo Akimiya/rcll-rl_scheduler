@@ -74,26 +74,7 @@ def create_byte_form(field_size):
 
 # pb_msg: message asa protobuf class
 def send_pb_message(pb_msg, s):
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.sendto(msg_bytes, (TCP_IP, 4446))
-    
 #    [key for key, value in COMPONENTS.items() if value == 'LogMessage'][0]
-#    set_game_state = pb.GameState_pb2.SetGameState()
-#    set_game_state.state = pb.GameState_pb2.GameState.WAIT_START
-#    pb_msg = set_game_state
-    
-#    add_base = pb.MachineCommands_pb2.MachineAddBase()
-#    add_base.machine_name = "ASD"
-#    pb_msg = add_base
-    
-#    prepare_RS = pb.MachineInstructions_pb2.PrepareInstructionRS()
-#    prepare_RS.ring_color = 4
-    prepare_machine = pb.MachineInstructions_pb2.PrepareMachine()
-    prepare_machine.team_color = 1
-    prepare_machine.machine = "M-RS1"
-    prepare_machine.instruction_rs.ring_color = 4
-    pb_msg = prepare_machine
-    
     
     # construct message
     message = dict(PACKET_LAYOUT)
@@ -115,8 +96,94 @@ def send_pb_message(pb_msg, s):
             msg_bytes += message[field_name]
         else:
             msg_bytes += struct.pack(form, message[field_name])
+            
+
+    if s.type == socket.SOCK_STREAM:
+        ret = s.send(msg_bytes)
+    else:
+        ret = s.sendto(msg_bytes, (TCP_IP, 4446))
     
-    return 0
+    return ret
+
+
+def simulate_game():
+    # TODO: currently we just assume that message arrived - check that?
+    
+    # start setting teams
+    set_team_name0 = pb.GameInfo_pb2.SetTeamName()
+    set_team_name0.team_name = "Carologistics"
+    set_team_name0.team_color = 0
+    set_team_name1 = pb.GameInfo_pb2.SetTeamName()
+    set_team_name1.team_name = "GRIPS"
+    set_team_name1.team_color = 1
+    
+    # set gamestate to needed phase & state
+    set_game_phase = pb.GameState_pb2.SetGamePhase()
+    set_game_phase.phase = pb.GameState_pb2.GameState.PRODUCTION
+    
+    set_game_state = pb.GameState_pb2.SetGameState()
+    set_game_state.state = pb.GameState_pb2.GameState.RUNNING
+    
+        
+    # send the above
+    sock_tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock_tcp.connect((TCP_IP, TCP_PORT))
+#    sock_udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # UDP don't need anymore
+    
+    send_pb_message(set_team_name0, sock_tcp)
+    send_pb_message(set_team_name1, sock_tcp)
+    send_pb_message(set_game_state, sock_tcp)
+    time.sleep(5) # TODO: make C++ load old setting or just ommit machine positions
+    send_pb_message(set_game_phase, sock_tcp)
+    
+    # GAME COMMUNICATION
+        
+#    add_base = pb.MachineCommands_pb2.MachineAddBase()
+#    add_base.machine_name = "ASD"
+    
+#    prepare_RS = pb.MachineInstructions_pb2.PrepareInstructionRS()
+#    prepare_RS.ring_color = 4
+#    prepare_machine = pb.MachineInstructions_pb2.PrepareMachine()
+#    prepare_machine.team_color = 1
+#    prepare_machine.machine = "M-RS1"
+#    prepare_machine.instruction_rs.ring_color = 3
+    
+    
+    # want to extract prouct
+    # take first for now...
+    process_order = orders[0]
+    # start with base
+    need_base = process_order.base_color
+    
+    prepare_machine = pb.MachineInstructions_pb2.PrepareMachine()
+    prepare_machine.team_color = 0
+    prepare_machine.machine = "C-BS"
+    
+    # tell RS to output a ringcolor?
+    prepare_machine.instruction_rs.ring_color = pb.ProductColor_pb2.RING_YELLOW
+    # tell BS to offer a base at one of 2 gates
+    prepare_machine.instruction_bs.side = pb.MachineInstructions_pb2.INPUT # (for now?) we dont care which side
+    prepare_machine.instruction_bs.color = need_base
+    
+    send_pb_message(prepare_machine, sock_tcp)
+
+    
+    # messages supposedly sent by the machines
+    workpiece_info = pb.WorkpieceInfo_pb2.Workpiece()
+    workpiece_info.id = 1
+    workpiece_info.at_machine = "C-BS"
+    workpiece_info.base_color = need_base
+    
+    send_pb_message(workpiece_info, sock_tcp)
+
+
+# TODO: The RefBox may or may not support intermediate points
+#       IT MAY DEPEND ON (workpiece-tracking (enabled ?tracking-enabled)) IS ENABLED
+    
+# TODO: In real robocup have fall-back strategy if RL bugs out (e.g. machine broken needed)
+    
+    
+# TODO: seems like the RefBox has a MOCKUP mode but it is not properly working and the machines do get timeouts
 
 if __name__ == "__main__":
     # create socket and build connection
@@ -125,6 +192,11 @@ if __name__ == "__main__":
     print("Connection started: \n{}\n\n".format(s))
     
     message_file = open("messages.log", "a")
+    
+    # work with global main variables (for now)
+    global machines
+    global orders
+    global rings
     
     # manage unpacking messages
     data = b""
@@ -185,15 +257,16 @@ if __name__ == "__main__":
                     assert read == message["payload_size"] - 4
                 
                     if component == "MachineInfo":
-                        print("We got a <{}> message:\n{}".format(component, pb_obj))
-                        machines = {"SS": deepcopy(MACHINE),
-                                    "CS1": deepcopy(MACHINE),
+                        # reset to default values
+                        # TODO: has instructions field - do we need?
+                        machines = {"CS1": deepcopy(MACHINE),
                                     "CS2": deepcopy(MACHINE),
                                     "RS1": deepcopy(MACHINE),
                                     "RS2": deepcopy(MACHINE),
+                                    "SS": deepcopy(MACHINE),
                                     "BS": deepcopy(MACHINE),
                                     "DS": deepcopy(MACHINE)}
-
+                        
                         for m in pb_obj.machines:
                             # filter just one activve team; here CYAN
                             if m.name[0] == "C":
@@ -208,14 +281,23 @@ if __name__ == "__main__":
                                     machines[mtype]["lights"][x.color] = x.state
                         
 #                            if m.name == "C-RS1":
-                        print("We got a <{}> message:\n{}".format(component, machines))
+                        outp = [[k, v] for k, v in machines.items() if k != "SS"] # just for debug
+                        print("We got a <{}> message:\n{}\n{}\n{}".format(component, outp[:2], outp[2:4], outp[4:]))
                     
                     elif component == "OrderInfo":
-                        orders = pb_obj.orders # we can work with givne struct here
+                        orders = pb_obj.orders # we can work with given struct here as need all param
+                        print("We got a <{}> message:\n{}".format(component, pb_obj))
                     elif component == "GameState":
                         print("We got a <{}> message:\nphase={}".format(component, pb_obj.phase))
-                    elif component == "BeaconSignal":
-                        assert False
+                    elif component == "RingInfo":
+                        # TODO: technically only need to know once
+                        rings = {1 : 0,
+                                 2 : 0,
+                                 3 : 0,
+                                 4 : 0}
+                        for r in pb_obj.rings:
+                            rings[r.ring_color] = r.raw_material
+                        print("We got a <{}> message:\n{}".format(component, rings))
                     else:
                         print("We got a <{}> message:\n{}".format(component, pb_obj))
 #                time.sleep(1)
