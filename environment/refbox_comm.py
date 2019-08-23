@@ -198,6 +198,8 @@ if __name__ == "__main__":
     global orders
     global rings
     
+    last_machines = {}
+    
     # manage unpacking messages
     data = b""
     while True:
@@ -280,9 +282,12 @@ if __name__ == "__main__":
                                     # 0 is OFF, 1 is ON, 2 is BLINK => MachineDescripton.proto
                                     machines[mtype]["lights"][x.color] = x.state
                         
-#                            if m.name == "C-RS1":
                         outp = [[k, v] for k, v in machines.items() if k != "SS"] # just for debug
-                        print("We got a <{}> message:\n{}\n{}\n{}".format(component, outp[:2], outp[2:4], outp[4:]))
+                        if last_machines == machines:
+                            print("We got a <{}> message but nothing changed..")
+                        else:
+                            print("We got a <{}> message:\n{}\n{}\n{}".format(component, outp[:2], outp[2:4], outp[4:]))
+                        last_machines = deepcopy(machines)
                     
                     elif component == "OrderInfo":
                         orders = pb_obj.orders # we can work with given struct here as need all param
