@@ -77,3 +77,31 @@ R3 from BS (get BASE_SILVER) to CS1
 R1 from BS (get BASE_SILVER) to CS2
 R2 from BS (get BASE_SILVER) to CS2
 R3 from BS (get BASE_SILVER) to CS2
+
+R1 from BS (get BASE_RED) to RS1
+R2 from BS (get BASE_RED) to RS1
+R3 from BS (get BASE_RED) to RS1
+R1 from BS (get BASE_RED) to RS2
+R2 from BS (get BASE_RED) to RS2
+R3 from BS (get BASE_RED) to RS2
+
+R1 from BS (get BASE_BLACK) to RS1
+R2 from BS (get BASE_BLACK) to RS1
+R3 from BS (get BASE_BLACK) to RS1
+R1 from BS (get BASE_BLACK) to RS2
+R2 from BS (get BASE_BLACK) to RS2
+R3 from BS (get BASE_BLACK) to RS2
+
+R1 from BS (get BASE_SILVER) to RS1
+R2 from BS (get BASE_SILVER) to RS1
+R3 from BS (get BASE_SILVER) to RS1
+R1 from BS (get BASE_SILVER) to RS2
+R2 from BS (get BASE_SILVER) to RS2
+R3 from BS (get BASE_SILVER) to RS2
+
+R1 from BS (DELIVER_BASE) to RS1
+R2 from BS (DELIVER_BASE) to RS1
+R3 from BS (DELIVER_BASE) to RS1
+R1 from BS (DELIVER_BASE) to RS2
+R2 from BS (DELIVER_BASE) to RS2
+R3 from BS (DELIVER_BASE) to RS2
