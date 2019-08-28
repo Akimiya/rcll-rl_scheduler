@@ -1,0 +1,79 @@
+################# States #################
+orders {
+  base_color: BASE_RED
+  cap_color: CAP_BLACK
+  quantity_requested: 1
+  delivery_period_begin: 0
+  delivery_period_end: 1020
+  competitive: false
+,
+  base_color: BASE_RED
+  ring_colors: RING_GREEN
+  cap_color: CAP_BLACK
+  quantity_requested: 1
+  delivery_period_begin: 0
+  delivery_period_end: 1020
+  competitive: false
+,
+  base_color: BASE_RED
+  ring_colors: RING_ORANGE
+  ring_colors: RING_GREEN
+  ring_colors: RING_YELLOW
+  cap_color: CAP_GREY
+  quantity_requested: 1
+  delivery_period_begin: 698
+  delivery_period_end: 870
+  competitive: false
+}
+Machines {
+  CS1: {
+  state: IDLE
+  loaded: 0
+  }
+  CS2: {
+  state: IDLE
+  loaded: 0
+  }
+  RS1: {
+  state: IDLE
+  ring_colors: [2, 3]
+  }
+  RS2: {
+  state: IDLE
+  ring_colors: [1, 4]
+  }
+  BS: {
+  state: IDLE
+  }
+  DS: {
+  state: IDLE
+  }
+}
+Robots {
+  R1: BS
+  R2: BS
+  R3: BS
+}
+Time: 0 seconds
+
+################# Actions #################
+R1 from BS (get BASE_RED) to CS1
+R2 from BS (get BASE_RED) to CS1
+R3 from BS (get BASE_RED) to CS1
+R1 from BS (get BASE_RED) to CS2
+R2 from BS (get BASE_RED) to CS2
+R3 from BS (get BASE_RED) to CS2
+
+R1 from BS (get BASE_BLACK) to CS1
+R2 from BS (get BASE_BLACK) to CS1
+R3 from BS (get BASE_BLACK) to CS1
+R1 from BS (get BASE_BLACK) to CS2
+R2 from BS (get BASE_BLACK) to CS2
+R3 from BS (get BASE_BLACK) to CS2
+
+R1 from BS (get BASE_SILVER) to CS1
+R2 from BS (get BASE_SILVER) to CS1
+R3 from BS (get BASE_SILVER) to CS1
+R1 from BS (get BASE_SILVER) to CS2
+R2 from BS (get BASE_SILVER) to CS2
+R3 from BS (get BASE_SILVER) to CS2

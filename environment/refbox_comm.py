@@ -283,9 +283,7 @@ if __name__ == "__main__":
                                     machines[mtype]["lights"][x.color] = x.state
                         
                         outp = [[k, v] for k, v in machines.items() if k != "SS"] # just for debug
-                        if last_machines == machines:
-                            print("We got a <{}> message but nothing changed..")
-                        else:
+                        if last_machines != machines: # also just for debug...
                             print("We got a <{}> message:\n{}\n{}\n{}".format(component, outp[:2], outp[2:4], outp[4:]))
                         last_machines = deepcopy(machines)
                     
