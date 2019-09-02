@@ -1,3 +1,4 @@
+Example scenario
 ################# States #################
 orders {
   base_color: BASE_RED
@@ -59,22 +60,32 @@ Time: 0 seconds
 ################# Actions #################
 R1 from BS (get BASE_RED) to CS1
 R1 from BS (get BASE_RED) to CS2
-
-R1 from BS (get BASE_BLACK) to CS1
-R1 from BS (get BASE_BLACK) to CS2
-
-R1 from BS (get BASE_SILVER) to CS1
-R1 from BS (get BASE_SILVER) to CS2
-
 R1 from BS (get BASE_RED) to RS1
 R1 from BS (get BASE_RED) to RS2
 
+R1 from BS (get BASE_BLACK) to CS1
+R1 from BS (get BASE_BLACK) to CS2
 R1 from BS (get BASE_BLACK) to RS1
 R1 from BS (get BASE_BLACK) to RS2
 
+R1 from BS (get BASE_SILVER) to CS1
+R1 from BS (get BASE_SILVER) to CS2
 R1 from BS (get BASE_SILVER) to RS1
 R1 from BS (get BASE_SILVER) to RS2
 
 R1 from BS (DELIVER_BASE) to RS1
 R1 from BS (DELIVER_BASE) to RS2
+
+======> decoupling:
+
+R1 from BS to CS1
+R1 from BS to CS2
+R1 from BS to RS1
+R1 from BS to RS2
+      x
+get BASE_RED
+get BASE_BLACK
+get BASE_SILVER
+DELIVER_BASE
+
 
