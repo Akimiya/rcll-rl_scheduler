@@ -5,7 +5,7 @@ import socket
 import time
 import struct
 import traceback
-import multiprocessing
+import threading
 import datetime as dt
 from collections import OrderedDict
 from copy import deepcopy # more performant then dict()
@@ -125,7 +125,12 @@ def connect_socket(s, exist=True):
     return s
 
 def communicator(debug_output=False, log_=False):
+    # work with global main variables
+    global machines
+    global orders
+    global rings
     global s
+    global running
     
     # create socket and build connection
     s = connect_socket(None, False)
@@ -133,25 +138,20 @@ def communicator(debug_output=False, log_=False):
     if log_:
         message_file = open("messages.log", "a")
     
-    # work with global main variables (for now)
-    global machines
-    global orders
-    global rings
-    
     last_machines = {}
     
     # manage unpacking messages
     data = b""
-    while True:
+    while running:
         try:
             data += s.recv(BUFFER_SIZE)
             # while there is something processable inside the buffer
             have_data = True
-        except KeyboardInterrupt:
-            print("Worker got KeyboardInterrupt, exiting..")
+        except OSError:
+            print("Worker got OSError..")
             data = b""
             
-        if not data:
+        if not data and running:
             have_data = False
             print("Connection lost, trying to reconnect")
             s = connect_socket(s)
@@ -345,21 +345,36 @@ def simulate_game():
 
 # TODO: The RefBox may or may not support intermediate points
 #       IT MAY DEPEND ON (workpiece-tracking (enabled ?tracking-enabled)) IS ENABLED
-    
+
 # TODO: In real robocup have fall-back strategy if RL bugs out (e.g. machine broken needed)
-    
-    
+
 # TODO: seems like the RefBox has a MOCKUP mode but it is not properly working and the machines do get timeouts
 
 if __name__ == "__main__":
+    global machines
+    global orders
+    global rings
+    global s
+    global running
+    
+    machines = {}
+    orders = {}
+    rings = {}
+    s = None
+    running = True
+    
     # start the thread handling current data
-    p = multiprocessing.Process(target=communicator, args=(False, False,))
-    p.start()
+    thr = threading.Thread(target=communicator, args=(False, False,))
+    thr.start()
     
     try:
         while True:
             time.sleep(5)
+            print(orders)
     except KeyboardInterrupt:
-        p.terminate()
+        running = False
+        s.close()
         print("Main got KeyboardInterrupt, exiting..")
-    
+    # thread should be closing due to socket
+    thr.join()
+    print("Main closed")
