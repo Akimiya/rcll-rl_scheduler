@@ -273,6 +273,8 @@ def communicator(debug_output=False, log_=False):
 
 
 def simulate_game():
+    global workpieces
+    global orders
     # TODO: currently we just assume that message arrived - check that?
     
     # start setting teams
@@ -292,15 +294,15 @@ def simulate_game():
     
         
     # send the above
-    sock_tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock_tcp.connect((TCP_IP, TCP_PORT))
+#    sock_tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+#    sock_tcp.connect((TCP_IP, TCP_PORT))
 #    sock_udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # UDP don't need anymore
     
-    send_pb_message(set_team_name0, sock_tcp)
-    send_pb_message(set_team_name1, sock_tcp)
-    send_pb_message(set_game_state, sock_tcp)
+    send_pb_message(set_team_name0, s)
+    send_pb_message(set_team_name1, s)
+    send_pb_message(set_game_state, s)
     time.sleep(5) # TODO: make C++ load old setting or just ommit machine positions
-    send_pb_message(set_game_phase, sock_tcp)
+    send_pb_message(set_game_phase, s)
     
     # GAME COMMUNICATION
         
@@ -314,6 +316,7 @@ def simulate_game():
 #    prepare_machine.machine = "M-RS1"
 #    prepare_machine.instruction_rs.ring_color = 3
     
+    time.sleep(2)
     
     # want to extract prouct
     # take first for now...
@@ -331,16 +334,29 @@ def simulate_game():
     prepare_machine.instruction_bs.side = pb.MachineInstructions_pb2.INPUT # (for now?) we dont care which side
     prepare_machine.instruction_bs.color = need_base
     
-    send_pb_message(prepare_machine, sock_tcp)
+    send_pb_message(prepare_machine, s)
 
     
     # messages supposedly sent by the machines
     workpiece_info = pb.WorkpieceInfo_pb2.Workpiece()
-    workpiece_info.id = 1
+    wp_id = 0
+    if need_base == pb.ProductColor_pb2.BASE_RED:
+        wp_id = workpieces["id_red"]
+        workpieces["id_red"] += 1
+    elif need_base == pb.ProductColor_pb2.BASE_BLACK:
+        wp_id = workpieces["id_black"]
+        workpieces["id_black"] += 1
+    elif need_base == pb.ProductColor_pb2.BASE_SILVER:
+        wp_id = workpieces["id_silver"]
+        workpieces["id_silver"] += 1
+    
+    workpiece_info.id = wp_id
     workpiece_info.at_machine = "C-BS"
     workpiece_info.base_color = need_base
+    # optional
+    workpiece_info.team_color = 0
     
-    send_pb_message(workpiece_info, sock_tcp)
+    send_pb_message(workpiece_info, s)
 
 
 # TODO: The RefBox may or may not support intermediate points
@@ -356,12 +372,17 @@ if __name__ == "__main__":
     global rings
     global s
     global running
+    global workpieces
     
     machines = {}
     orders = {}
     rings = {}
     s = None
     running = True
+    workpieces = {"id_red" : 1001,
+                 "id_black" : 2001,
+                 "id_silver" : 3001,
+                 "id_clear" : 4001}
     
     # start the thread handling current data
     thr = threading.Thread(target=communicator, args=(False, False,))
@@ -375,6 +396,7 @@ if __name__ == "__main__":
         running = False
         s.close()
         print("Main got KeyboardInterrupt, exiting..")
-    # thread should be closing due to socket
+
+    # thread should be closing due to socket closed
     thr.join()
     print("Main closed")

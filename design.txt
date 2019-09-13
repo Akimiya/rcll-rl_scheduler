@@ -88,4 +88,15 @@ get BASE_BLACK
 get BASE_SILVER
 DELIVER_BASE
 
+other:
+get RING_BLUE
+get RING_GREEN
+get RING_ORANGE
+get RING_YELLOW
+DELIVER_BASE
 
+get CAP_BLACK
+get CAP_GREY
+UNMOUNT_CAP
+
+model the movement
