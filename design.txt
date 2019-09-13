@@ -27,76 +27,72 @@ orders {
   competitive: false
 }
 Machines {
-  CS1: {
-  state: IDLE
-  loaded: 0
-  }
-  CS2: {
-  state: IDLE
-  loaded: 0
-  }
-  RS1: {
-  state: IDLE
-  ring_colors: [2, 3]
-  }
-  RS2: {
-  state: IDLE
-  ring_colors: [1, 4]
-  }
-  BS: {
-  state: IDLE
-  }
-  DS: {
-  state: IDLE
-  }
+  distances: [(d_11, d_12, d_13, d_14, d_15, d_16),
+              (d_21, d_22, d_23, d_24, d_25, d_26),
+              (d_31, d_32, d_33, d_34, d_35, d_36),
+              (d_41, d_42, d_43, d_44, d_45, d_46),
+              (d_51, d_52, d_53, d_54, d_55, d_56),
+              (d_61, d_62, d_63, d_64, d_65, d_66)]
+             # blue green orange yellow
+  ring_bases: [2,   0,    1,     0]
+            # BS CS1 CS2 RS1 RS2 DS
+  available: [1, 1,  1,  1,  1,  1]
 }
-Robots {
-  R1: BS
-  R2: BS
-  R3: BS
+Products {
+  P1: [BASE_RED, 0, 0, 0]
+  P2: [BASE_RED, RING_ORANGE, 0, 0]
+  P3: [0, 0, 0, 0]
 }
 Time: 0 seconds
 
 ################# Actions #################
-R1 from BS (get BASE_RED) to CS1
-R1 from BS (get BASE_RED) to CS2
-R1 from BS (get BASE_RED) to RS1
-R1 from BS (get BASE_RED) to RS2
+possbile:
+- get BASE_RED for P3
+- get RING_GREEN for P1
+- get RING_GREEN for P2
+- get CAP_BLACK for P1
+- discard P1
+- discard P2
 
-R1 from BS (get BASE_BLACK) to CS1
-R1 from BS (get BASE_BLACK) to CS2
-R1 from BS (get BASE_BLACK) to RS1
-R1 from BS (get BASE_BLACK) to RS2
+all:
+get BASE_RED            => +1
+get BASE_BLACK          => +1
+get BASE_SILVER         => +1
 
-R1 from BS (get BASE_SILVER) to CS1
-R1 from BS (get BASE_SILVER) to CS2
-R1 from BS (get BASE_SILVER) to RS1
-R1 from BS (get BASE_SILVER) to RS2
+get RING_BLUE           => +2 +2 +20
+get RING_GREEN          => +5
+get RING_ORANGE         => +2 +10
+get RING_YELLOW         => +5
 
-R1 from BS (DELIVER_BASE) to RS1
-R1 from BS (DELIVER_BASE) to RS2
+get CAP_BLACK           => +10 +20 (increasingly late up to -15)
+get CAP_GREY            => +10 +20 (increasingly late up to -15)
 
-======> decoupling:
+discard                 => 0 (-4 as may be somewhat better to late deliver then discard)
 
-R1 from BS to CS1
-R1 from BS to CS2
-R1 from BS to RS1
-R1 from BS to RS2
-      x
-get BASE_RED
-get BASE_BLACK
-get BASE_SILVER
-DELIVER_BASE
+X
 
-other:
-get RING_BLUE
-get RING_GREEN
-get RING_ORANGE
-get RING_YELLOW
-DELIVER_BASE
+for P1 or P2 or O3
 
-get CAP_BLACK
-get CAP_GREY
-UNMOUNT_CAP
 
-model the movement
+################# Rewards #################
+in this example:
++1  get BASE_RED for P3
++5  get RING_GREEN for P1
++5  get RING_GREEN for P2
++30 get CAP_BLACK for P1
+-4  discard P1
+-4  discard P2
+
+all:
+above plus the following
+BONUS ON LAST CAP => if C_1 +10 
+                     elif C_2 +30
+                     elif C_3 +80
+
+BUFFER CAP IN CAPSTATION ???
+
+COMPETITIVE       => +10 at start and
+                     -10 at end of delivery window (liniar decay)
+
+
+

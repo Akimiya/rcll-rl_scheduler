@@ -87,7 +87,7 @@ We present a solution using Reinforcement Learning (RL) to tackle the problem of
 
 
 \subsection{Environment}
-In the first steps we apply a more simplified environment, which for starters only provides an order schedule with delivery windows and randomly. The initial goal is thus for the system to learn which orders are most feasible to complete or award most intermediate rewards.\\
+In the first steps we apply a more simplified environment, which for starters only provides an order schedule with delivery windows. The initial goal is thus for the system to learn which orders are most feasible to complete or award most intermediate rewards.\\
 We build the environment so that we can have a precision of seconds, while not specifically modelling each second as a discrete time step. The idea is to merge the discrete time into the actual state as a numerical feature, which is incremented in the expected passed time for a processing step. Initially the elapsed time for the intermediate steps is drawn from Gaussian distributions, which can be later extended with application of the distance matrix and real-world data.\\
 The environment utilizing most of the complexity behind the task 
 
