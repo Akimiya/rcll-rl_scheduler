@@ -1,0 +1,97 @@
+\documentclass[runningheads,envcountsect]{llncs}
+
+\usepackage[margin=2.5cm]{geometry}
+% HACK to use titlesec
+%% Save the class definition of \subparagraph
+\let\llncssubparagraph\subparagraph
+%% Provide a definition to \subparagraph to keep titlesec happy
+\let\subparagraph\paragraph
+%% Load titlesec
+\usepackage[compact]{titlesec}
+%% Revert \subparagraph to the llncs definition
+\let\subparagraph\llncssubparagraph
+
+\usepackage{algorithmic}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathtools}
+\usepackage{enumitem}
+\usepackage{float}
+\usepackage[colorlinks=true,
+            urlcolor=blue,
+            linkcolor=black,
+            citecolor=blue]{hyperref}
+\usepackage{pbox}
+\usepackage{framed}
+\usepackage{array}
+\usepackage{todonotes}
+\usepackage[n,advantage,operators,sets,adversary,landau,probability,notions,logic,ff,mm,primitives,events,complexity,asymptotics,keys]{cryptocode}
+\usepackage{graphicx}
+
+% title resize
+\titleformat*{\section}{\fontsize{14}{16}\selectfont\bfseries}
+\titleformat*{\subsection}{\fontsize{12}{20}\selectfont\bfseries}
+
+% float environment for schemes
+\floatstyle{boxed}
+\newfloat{scheme}{ht}{lo}
+\floatname{scheme}{Scheme}
+\newcommand{\schemeautorefname}{Scheme}
+
+\floatstyle{boxed}
+\newfloat{gamehop}{ht}{lo}
+\floatname{gamehop}{Game Hop}
+\newcommand{\gamehopautorefname}{Game Hop}
+
+% environment for exercises
+\spnewtheorem{mpkcexercise}{Exercise}[section]{\bfseries}{\rmfamily}
+\spnewtheorem{mpkcproof}{Proof}[section]{\bfseries}{\rmfamily}
+\setcounter{secnumdepth}{3}
+
+% some useful sets
+\newcommand{\G}{\ensuremath{\mathbb{G}}}
+\newcommand{\Z}{\ensuremath{\mathbb{Z}}}
+\newcommand{\N}{\ensuremath{\mathbb{N}}}
+\newcommand{\M}{\ensuremath{\mathcal{M}}}
+\newcommand{\A}{\ensuremath{\mathcal{A}}}
+\newcommand{\R}{\ensuremath{\mathcal{R}}}
+\newcommand{\B}{\ensuremath{\mathcal{B}}}
+\renewcommand{\O}{\ensuremath{\mathcal{O}}}
+\newcommand{\V}{\ensuremath{\mathcal{V}}}
+\renewcommand{\P}{\ensuremath{\mathcal{P}}}
+
+
+% Center text in table with custom size
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+
+
+% x \getsr X to sample x from X uniformly at random
+\newcommand{\getsr}
+  {{\:{\gets{\hspace*{-9pt}\raisebox{5pt}{$\scriptscriptstyle{R}$}}}\hspace*{3.3pt}}}
+
+\title{{\huge TODO Title}\\{\LARGE \vspace{4pt} TODO SubTitle}}
+\titlerunning{TODO RunningTitle}
+\author{}
+\institute{}
+
+\begin{document}
+
+\maketitle
+
+\section{Section}
+
+\subsection{Robo Cup Idea}
+The Robo Cup Logistics League (RCLL) is designed to represent a common scenario in Industry $4.0$. The challenge consists in assembling products based on dynamic custom orders in a real-time environment. This leads us to a consistent stream of orders and individual delivery windows. .....
+
+\subsection{Reinforcement Learning approach}
+We present a solution using Reinforcement Learning (RL), to tackle the problem of deciding which product the robots need to process next. For this we leave the flexibility open to let the model select between all intermediate steps of each individual product.
+
+
+\vspace{24pt}
+
+\bibliographystyle{alpha}
+\bibliography{lecturenotes.bib}
+
+\end{document}
