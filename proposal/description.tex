@@ -85,7 +85,7 @@ The Robo Cup Logistics League (RCLL) is designed to represent a common scenario 
 \section{Reinforcement Learning approach}
 We present a solution using Reinforcement Learning (RL) to tackle the problem of deciding which assembly step the robots need to process next. Due to the complexity of the problem a Deep Q-Learning (DQL) approach is initially applied, while keeping open options and alternatives described in section \ref{risks}.\\
 The goal of Q-learning is for an agent to select actions, which maximize the total reward earned over an episode (=game), by observing the state and reward from an environment (see figure \ref{fig:rl}). So from a state $s$ onward we want to get maximum future reward $r$, which we denote as the Q-value $Q(s,a)=r(s,a)+\gamma max_a Q(s',a)$. With $\gamma$ we can control the weight of the future rewards.\\
-When shifting from Q-learning to DQL we apply a Deep Neural Network (DNN) to approximate the Q-values for each individual action, given a state.
+When shifting from Q-learning to DQL we apply a Deep Neural Network (DNN) to learn the Q-values for each individual action, given a state (see figure \ref{fig:dql}). We can train the DNN gradient with backpropagation from a squared error loss function using $Q(s_t, a_t) \leftarrow Q(s_t, a_t) + \alpha [r_{t+1} + \gamma max_a Q(s_{t+1}, a) - Q(s_t, a_t)]$.
 
 For DQN to work we assume the Markov property holds, i.e., that each state only depends on the previous state and the transition from that state to the current one.
 We know from the DNN each expected reward of each action at every step.
@@ -97,6 +97,13 @@ We avoid using a multi-agent model by focusing on the order schedule and deducti
   \includegraphics[scale=0.7]{img/rl_base.png}
   \caption{Basic idea of Reinforcement Learning.}
   \label{fig:rl}
+\end{figure}
+
+\begin{figure}[h!]
+  \centering
+  \includegraphics[scale=0.5]{img/dql.png}
+  \caption{Basic idea of Reinforcement Learning.}
+  \label{fig:dql}
 \end{figure}
 
 
