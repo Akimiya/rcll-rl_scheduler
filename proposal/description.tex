@@ -144,13 +144,31 @@ Specifically we can represent an order as a vector of $O=\{\mathcal{B}, \mathcal
   \item $d_{start} = \{d_{start} \in \mathbb{N}|\ 0 \leq d_{start} \leq 1020 \}$ is the start of the delivery window
   \item $d_{end} = \{d_{end} \in \mathbb{N}|\ 0 \leq d_{start} < d_{end} \leq 1020 \}$ is the end of the delivery window
 \end{itemize}
-An intermediate product in the pipeline will look like $\{\mathcal{B}, \mathcal{R}_1, \mathcal{R}_2, \mathcal{R}_3\}$. We can also omit the cap as we will deliver straight after.
+An intermediate product in the pipeline will look like $P=\{\mathcal{B}, \mathcal{R}_1, \mathcal{R}_2, \mathcal{R}_3\}$. We can also omit the cap as we will deliver straight after.
 The symmetric distance matrix ($D \in \mathbb{R}^{6 \times 6}$) is computed at the start of the episode. 
-The machine availability ($A \in \mathbb{R}^{6}$) exists mainly for handling real-time events.
+The machine availability ($A \in \mathbb{R}^6$) exists mainly for handling real-time events.
 Finally we also add the running time in seconds as $t = \{t \in \mathbb{N}|\ 0 \leq t \leq 1020 \}$.\\
 
-While there is still room for changes the current dimensions are $\mathcal{B} \times 3\mathcal{R} \times \mathcal{C} \times n \times c \times d_{start}' \times d_{end}' = 360 \cdot d_{start} \times d_{end}$
+While there is still room for changes the current dimensions are
 
+\begin{align*}
+&10 \cdot O \times 
+3 \cdot P \times 
+D \times
+A \times
+t' \\
+&= 90 \cdot \mathcal{B} \times 
+\mathcal{R} \times 
+\mathcal{C} \times 
+n \times 
+c \times 
+d_{start}' \times 
+d_{end}' \times 
+\mathcal{B} \times
+\mathcal{R} \times 
+t' 
+= 360 \cdot d_{start} \times d_{end}
+\end{align*}
 
 \subsection{Actions}
 The actions consist of selecting $A=\{\mathcal{B}_P, \mathcal{R}_P, \mathcal{C}_P, d_P\}$, which is a base, ring, cap or discarding the product in pipeline $P$. By discarding we order the option to discontinue the current order and use the pipeline slot for another. In total we have an action space of $A\cdot P$.
