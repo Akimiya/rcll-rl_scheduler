@@ -148,31 +148,27 @@ An intermediate product in the pipeline will look like $P=\{\mathcal{B}, \mathca
 The symmetric distance matrix ($D \in \mathbb{R}^{6 \times 6}$) is computed at the start of the episode. 
 The machine availability ($A \in \mathbb{R}^6$) exists mainly for handling real-time events.
 Finally we also add the running time in seconds as $t = \{t \in \mathbb{N}|\ 0 \leq t \leq 1020 \}$.\\
-
 While there is still room for changes the current dimensions are
-
 \begin{align*}
 &10 \cdot O \times 
 3 \cdot P \times 
 D \times
 A \times
 t' \\
-&= 10 \cdot 
+&\approx 2 \cdot 10^4 \cdot (
 \mathcal{B} \times 
-3 \cdot \mathcal{R} \times 
+\mathcal{R} \times 
 \mathcal{C} \times 
 n \times 
 c \times 
 d_{start}' \times 
 d_{end}' \times 
-3 \cdot 
 \mathcal{B} \times
-3 \cdot \mathcal{R} \times 
-12 \times
-6
-t' \\
-&= 360 \cdot d_{start} \times d_{end}
+\mathcal{R} \times 
+t' )\\
+&\approx 35 \cdot 10^6 \cdot (d_{start} \times d_{end} \times t')
 \end{align*}
+Noteworthy here is that we can bind $(d_{start} \times d_{end} \times t') \lesssim 22$ to the fact that we will only have increases of about 45 seconds, 
 
 \subsection{Actions}
 The actions consist of selecting $A=\{\mathcal{B}_P, \mathcal{R}_P, \mathcal{C}_P, d_P\}$, which is a base, ring, cap or discarding the product in pipeline $P$. By discarding we order the option to discontinue the current order and use the pipeline slot for another. In total we have an action space of $A\cdot P$.
