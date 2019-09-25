@@ -71,7 +71,7 @@
   {{\:{\gets{\hspace*{-9pt}\raisebox{5pt}{$\scriptscriptstyle{R}$}}}\hspace*{3.3pt}}}
 
 \title{{\huge Reinforcement Learning Approach on the Order Scheduling for the RoboCup Logistic league}\\{\LARGE \vspace{4pt} by Khodachenko Ian}}
-\titlerunning{RCLL scheduling (revision 1.0)}
+\titlerunning{RCLL scheduling (revision 1.1)}
 \author{}
 \institute{}
 
@@ -100,28 +100,28 @@ Putting all together we arrive at figure \ref{fig:dql_full}, which roughly trans
 \begin{figure}[t]
   \centering
   \includegraphics[scale=0.7]{img/rl_base.png}
-  \caption{Basic idea of Reinforcement Learning.}
+  \caption{Basic idea of Reinforcement Learning. Image from \cite{dql_guide2}.}
   \label{fig:rl}
 \end{figure}
 
 \begin{figure}[t]
   \centering
   \includegraphics[scale=0.3]{img/dql.png}
-  \caption{Comparison of using a Q-table and a neural network.}
+  \caption{Comparison of using a Q-table and a neural network. Image from \cite{dql_guide}.}
   \label{fig:dql}
 \end{figure}
 
 \begin{figure}[t]
   \centering
   \includegraphics[scale=0.5]{img/rl_double_model.png}
-  \caption{Structure for updating the two internal networks in the RL set-up.}
+  \caption{Structure for updating the two internal networks in the RL set-up. Image from \cite{dql_guide}.}
   \label{fig:rl_dm}
 \end{figure}
 
 \begin{figure}[t]
   \centering
   \includegraphics[scale=0.6]{img/dql_full.png}
-  \caption{Structure for the full DQL cycle.}
+  \caption{Structure for the full DQL cycle. Image from \cite{dql_guide}.}
   \label{fig:dql_full}
 \end{figure}
 
@@ -139,7 +139,7 @@ Specifically we can represent an order as a vector of $O=\{\mathcal{B}, \mathcal
   \item $\mathcal{B}=\{red, black, silver\}$ represents a set of base types
   \item $\mathcal{R}=\{blue, green, orange, yellow, F\}$ is one of up to 3 ring types
   \item $\mathcal{C}=\{black, grey\}$ is the cap type
-  \item $n = \{1,2\}$ is the requested amount
+  \item $n = \{1,2\}$ is the requested amount or products requested
   \item $c = \{T, F\}$ indicates whether the order is competitive
   \item $d_{start} = \{d_{start} \in \mathbb{N}|\ 0 \leq d_{start} \leq 1020 \}$ is the start of the delivery window
   \item $d_{end} = \{d_{end} \in \mathbb{N}|\ 0 \leq d_{start} < d_{end} \leq 1020 \}$ is the end of the delivery window
@@ -168,10 +168,10 @@ d_{end}' \times
 t' )\\
 &\approx 35 \cdot 10^6 \cdot (d_{start} \times d_{end} \times t')
 \end{align*}
-Noteworthy here is that we can bind $(d_{start} \times d_{end} \times t') \lesssim 22$ to the fact that we will only have increases of about 45 seconds, 
+Noteworthy here is that we can bind $(d_{start} \times d_{end} \times t') \lesssim 22$ because the fact that we will only have increases of about 45 seconds and will only ever see that many combinations.
 
 \subsection{Actions}
-The actions consist of selecting $A=\{\mathcal{B}_P, \mathcal{R}_P, \mathcal{C}_P, d_P\}$, which is a base, ring, cap or discarding the product in pipeline $P$. By discarding we order the option to discontinue the current order and use the pipeline slot for another. In total we have an action space of $A\cdot P$.
+The actions consist of processing (or "getting next") one of the following $A=\{\mathcal{B}_P, \mathcal{R}_P, \mathcal{C}_P, d_P\}$, which is a base, ring, cap or discarding the product in pipeline $P$. By discarding we offer the option to discontinue the current order and use the pipeline slot for another order  . In total we have an action space of $A\cdot P = 30$, if we let the agent choose from all possible actions. But here we don't want it to guess on possible future orders (it is also not in the RCLL rules), so we can strictly only let it choose actions which would advance one of the current objects in the pipeline. This reduces the maximum number of valid actions we can have at one state to $13$ as we can have up to $10$ orders and can choose to discard any of the 3 pipelined products.
 
 
 \subsection{Rewards}
@@ -185,14 +185,15 @@ As such here one will find possible fallback strategies and properties in no par
 \begin{itemize}
   \item We avoid using a multi-agent model by focusing on the order schedule and deducting a task sequence based on it. This task sequence can be forwarded from the GRIPS Teamserver to the individual robots and the time they take will be modelled as described in section \ref{env}.
   \item If we need to reduce complexity or in contrast intertwine the actual robot movement deeper into the model, we can apply similar multi-skill and multi-machine approaches as described in \cite{qu2016optimized}.
-  \item In the case where the estimation of time consumption for the specific tasks do not represent the real world well enough, we can train an additional neural network in a supervised manner. Here the inputs would be from measured data for given machine distance matrix - to give us more accurate estimations for the expected time consumption at a specific task.
+  \item In the case where the estimation of time consumption for the specific tasks do not represent the reality well enough, we can train an additional neural network in a supervised manner. Here the inputs would be from the measured data for a given machine distance matrix - to give us more accurate estimations for the expected time consumption at a specific task.
   \item When the communication with the RCLL RefereeBox, becomes problematic the rules can be manually translated into the environment.
-  \item Initially we will model by only allowing allowing valid actions (similar to Google Deep Mind), which consist in allowing only process known orders (not guessing future orders), but this can be changed by assigning negative rewards to the guessed order steps.
+  \item Initially we will allow the model to only take actions for known orders (similar to Google's AlphaGo) and thus preventing guessing the future, but this can also be changed by assigning negative rewards. Still the rulebook seem to not support (intermediate) rewards for yet not issued orders.
   \item There is a possibility that the model will possibly disregard the delivery windows as (per official reward structure) the assembly of more difficult products yields much more then the timely delivery.
+  \item The topic is generally covered with use of RL in a number of papers and to not go into the details of further alternatives: Sadly many use more simple and abstract environments, but the current design takes a couple ideas from them and may adjust more based on \cite{glaubius2012real}, \cite{shiue2018real}, \cite{waschneck2018optimization}, \cite{wu2011novel}, \cite{shahrabi2017reinforcement}, \cite{sharma2015performance}, \cite{lin2015simulation} and some more. Note that the last few are not about RL any more but have good ideas on designing the problem. 
 \end{itemize}
 
 
-\section{Main development schedule}
+\section{Current development schedule}
 First we try to build a network which can assemble a single order by selecting from the actions. Next we want it to recognize and understand the time it will take to process a single order, with a constant distance between machines. To do this we want it to be able to select from a number of orders and try to understand the delivery window.\\
 The environment will be extended as needed and the reward and action space will be adjusted as well. This should enable scaling up the difficulty and observe the feasibility of the DQN approach.
 
