@@ -106,6 +106,8 @@ def create_order(fill=False, amount=False, compet=False, window=False):
 
 # specifies how to encode the specific field
 def create_byte_form(field_size):
+    global test
+    test = 42
     form = ">" # bytes in big-endian order
     if field_size == 1:
         form += 'B'
