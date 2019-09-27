@@ -1,0 +1,70 @@
+1) Q: wie stellt man den reward hier da. wir haben ja keinen imediate award und auch keien am am schluss. die rewards kommen quasi als packte sobald ein produkt fertig wird.
+ist das nicht ein problem für RL. oder wie kann man das handhaben ?
+
+A: Mir ist noch nicht bekannt ob die RefBox dies bereits unterstützt aber das RCLL Rulebook hat eine Punkte-Liste für einzelne Schritte im Produkt-Prozess (e.g. finishing CC_0 Ring)
+
+2) Q: fehlt da die action als parameter für das netz oder ist die  impliziet im netz oder gibts gar mehrere netze?
+
+A: Die Figure ist for allem da um genau zu zeigen, dass wir ein DNN haben, dass als input nur mehr den State braucht und uns "random" Q(s, a) Werte liefert. Mit Trainig sollen wir dann von "random" zu "optimal" kommen, bis hin zu einer optimalen Policy.
+
+3) Q: du gehst hier von einem linearen plan für ein produkt aus - das ist eine sehr starke annahme
+
+A: Was ist gemeint mit "linearer plan"? Ich will dies mit einer probabilistischen Verteilung modellieren (N + U; ML kann dies dann interpretieren). Zugegebenermaßen ist dies trotzdem eine starke Annahme, dennoch ist es etwas, was man leichter anpassen kann wenn es nicht passt. Um es optimal zu machen werde ich richtige Daten brauchen (bzw. modellieren), was fast ein eigenes Projekt sein könnte.
+
+4) Q: oders entstehen zum teil im spiel - sprich es ändert sich die anzahl der orders in der "queue" - wie wird das im state repräsentiert
+
+A: Man kann es sich wie eine "10 x #Orders" Matrix vorstellen, wo jede Reihe entweder leer (=[0, ..., 0]) oder die entsprechende Order hat. Die Annahme hier is, dass wir niemals mehr als 10 Orders haben werden, es ist noch offen ob ich erfüllte Orders rauslösche. Das erste experiment an dem gerade gearbeitet wird ist sicher zu gehen, dass das RL sowas versteht.
+
+5) Q: das ist m.m.n. auch eine starke einschränkung da roboter auch parallel an produkten arbeiten können
+sprich die transporieren auch dinge die nicht ein eigentliches produkt sind - e.g. garbage
+
+A: Das stimmt, im Moment musste ich den Action-Space damit etwas reduzieren. Die Aktuelle Idee basiert darin nur die Produkte zu lernen (im Kontrast zu Robotersteuerung) und die Tasks basierend darauf rückzuschließen. Nach dem die Basis Idee funktioniert, kann man probieren ob wir es uns leisten können größere Funktionen zu lernen (IMPALA könnte hier besser sein).
+
+6) Q: das ist die alte version des rule books. wir haben nun 7 maschinen - die storage station is neu
+
+A: Stimmt, ich bin auch auf der neuen Version. Habe leider vergessen explizit zu sagen, dass wir die SS im Moment nicht beachten, da deren nutzen auch sehr begrenzt scheint. Diese Maschine alleine tut viele Actions ermöglichen ohne offensichtlichen Nutzen, man kann diese auch später theoretisch hinzufügen.
+
+
+7) Q: die aktionen würde ich ausführlicher benennen
+ich nehme an base - meint retrieving a base from the base station...
+
+A: Ja, ich hatte es probiert mit dem "getting next" zu beschreiben, aber ich meine genau das. Werde probieren dass nächstes mal deutlicher zu machen.
+
+
+8) Q: 30? how comes ?
+
+A: Hätte ich ausführlicher schreiben müssen: Es besteht aus (3 + 4 + 2 + 1) * 3 = 10 * 3
+Dies entspricht allen Möglichkeiten von Base + Ring + Cap + Discard per Pipeline. Zu beachten ist, dass wir im worst case nur 13 optionen haben, mit einem niedrigeren average.
+
+9) Q: ich denke das ist ein wissenschaftlich interessanter teil
+
+A: Die Idee ist es das DQN auf die exacte Struktur vom RCLL anzupassen, also es würde lernen deren Punkte zu maximieren. Ich füge absichtlich nur wenig hinzu um die ursprünglichen Proportionen beizubehalten. Minimale änderungen gibt es dafür damit es genug Rewards gibt, dass das RL etwas "tun will". Allgemein betrachtet ist dies ein Punkt den man sehr leicht abändern kann und auch wahrscheinlich je nach Resultaten angepasst wird.
+
+
+10) Q: ich denke hier liegst du ein wenig falsch - da wir jetzt quasi scheduling und planning auseinander reissen. ich bin gespannt wie eine schätzung der laufzeit eines produktes durch dich wirklich durch die aktuelle plannung und umsetzung durch die roboter zusammenpassen.
+denke hier wird nur eine große schätzung möglich sein.
+
+A: Wenn mit "planning", die Bewegung von A nach B gemeint ist, dann ja. Es wäre eine andere Aufgabe wenn die Koordinaten explizit im RL wären (ist auch eine Aufgabe etwas zu kompliziert für ML). Ein Beispiel mit der aktuellen Funktionsweise wäre:
+z.B. action "GET_GREEN_RING for Pipeline 2" => braucht eine extra Base
+zur Tasks queue im Teamserver kommt:
+1) get additional Base from e.g. BS
+2) deliver Base to RS
+2) get intermediate product to RS
+Dies entspricht drei sub-steps für eine Order und das DQN bekommt die Summe von der durch t_k modelierten Zeit (also wie lange alle drei Schritte brauchten). Man kann dies auch noch einzeln optimieren (oder gar in einem neuen DNN lernen).
+
+11) Q: hier bitte mehr details wie du das system umsetzen willst - auch wie die spiele tatsächlich simuliert werden sollen
+nutz du die grips simulation oder machst du z.b. eine eigene abstrahierte?
+
+A: Also ich will das Spielfeld und Orders aus der RefBox ziehen (wenn unterstützt auch Punkte). Idee ist es einerseits mögliche implementationsspetzifische Muster zu erkennen und andererseits, bei updates zu diesen Punkten nichts neu implementieren zu müssen. Ein Bonus ist auch, dass ich davon ausgehen kann alles wird richtig generiert (statt extra debuggen und mit dem Regelbuch vergleichen).
+Die Spiele werden in einem eigenen neuen dedizierten Environment simuliert, aber es ist geplant Kommunikation mit der RefBox für Spielfeld, Orders und Punkte zu haben.
+
+12) Q: die referenzen muss ich mir im detail noch ansehen - schaut aber spannend aus
+
+A: Ich habe einige Papers durchgelesen, die scheduling mit RL angehen und viele sind auch aus der Semiconduktor Industrie bzw. werben dieses "Industry 4.0". Zusammengefasst arbeiten fast alle mit einem weniger kompliziertem System auch wenn ein paar sogar die Position der Roboter berücksictigen. Im allgemeinen gibt es überall Abstraktionen und eine der haupt Beiträge bei uns ist die Idee zur Abstraktionen von RCLL und wie Roboter weg-abstrahiert wurden.
+
+13) Q: wichtig wäre hier in der arbeit aber ein vergleich mit der aktuellen oder strategie from grips um zu zeigen um wie viel es besser wird
+
+A: Ja, auf jeden fall. Die Idee vom paper ist es je nach Ergebnis folgende Hauptthemen zu haben:
+- RL und dessen Performance
+- Vergleich zu aktuellen strategien
+- Vergleich zu SMT (optional falls RL komplett versagt)
