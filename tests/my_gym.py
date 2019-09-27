@@ -125,10 +125,10 @@ class Blob:
 
 class BlobEnv:
     SIZE = 10
-    RETURN_IMAGES = True
+    RETURN_IMAGES = False
     MOVE_PENALTY = 1
-    ENEMY_PENALTY = 300
-    FOOD_REWARD = 25
+    ENEMY_PENALTY = 100
+    FOOD_REWARD = 50
     OBSERVATION_SPACE_VALUES = (SIZE, SIZE, 3)  # 4
     ACTION_SPACE_SIZE = 9
     PLAYER_N = 1  # player key in dict
@@ -178,12 +178,12 @@ class BlobEnv:
             reward = -self.MOVE_PENALTY
 
         done = False
-        if reward == self.FOOD_REWARD or reward == -self.ENEMY_PENALTY or self.episode_step >= 200:
+        if reward == self.FOOD_REWARD or reward == - self.ENEMY_PENALTY or self.episode_step >= 200:
             done = True
 
         return new_observation, reward, done
 
-    def render(self):
+    def render(self, p=0.5):
         img = self.get_image()
         img = img.resize((300, 300))  # resizing so we can see our agent in all its glory.
 #        cv2.imshow("image", np.array(img))  # show it!
@@ -192,7 +192,7 @@ class BlobEnv:
 #        img.show()
         plt.imshow(np.array(img))
         plt.show(block=False)
-        plt.pause(0.5)
+        plt.pause(p)
         plt.close()
 #        time.sleep(1)
 #        plt.close("all")
@@ -209,14 +209,21 @@ class BlobEnv:
 
 
 class DQNAgent:
-    def __init__(self):
-        
+    def __init__(self, simple=False):
+        self.simple = simple
         # need TWO models: as we will start learning a lot or random actions
         # Main model / Training network; using dot fit (trained) every single step
-        self.model = self.create_model()
+        if self.simple:
+            self.model = self.create_model_simple()
+        else:
+            self.model = self.create_model()
+        
 
         # prediction model / Target network; dot predict for every single step the agent takes
-        self.target_model = self.create_model()
+        if self.simple:
+            self.target_model = self.create_model_simple()
+        else:
+            self.target_model = self.create_model()
         # set weights to same as above, will do every X steps later as well
         self.target_model.set_weights(self.model.get_weights())
 
@@ -257,6 +264,22 @@ class DQNAgent:
         model.compile(loss="mse", optimizer=Adam(lr=0.001), metrics=['accuracy'])
         return model
     
+    def create_model_simple(self):
+        model = Sequential()
+        
+        # input is the 4 elements long touple
+        model.add(Dense(10, activation='relu', input_shape=(4,)))
+        model.add(Dense(10, activation='relu'))
+#        model.add(Dense(10, activation='relu'))
+
+        # the output llayer, ACTION_SPACE_SIZE = how many choices (9)
+        model.add(Dense(env.ACTION_SPACE_SIZE, activation='linear'))
+        
+        # adam optimizer with learning rate lr and track accuracy
+        model.compile(loss="mse", optimizer=Adam(lr=0.001), metrics=['accuracy'])
+        
+        return model
+    
     # Adds step's data to a memory replay array
     # transition = (observation space, action, reward, new observation space, done)
     def update_replay_memory(self, transition):
@@ -265,7 +288,12 @@ class DQNAgent:
     # Queries main network for Q values given current observation space (environment state)
     def get_qs(self, state):
         # unpack state with the * Elements from this iterable are treated as if they were additional positional arguments
-        return self.model.predict(np.array(state).reshape(-1, *state.shape) / 255)[0]
+        s = np.array(state)
+        if self.simple:
+            ret = self.model.predict(s[np.newaxis,:] / 9)
+        else:
+            ret = self.model.predict(s.reshape(-1, *s.shape) / 255)[0]
+        return ret
     
      # Trains main network every step during episode
     def train(self, terminal_state, step):
@@ -276,14 +304,18 @@ class DQNAgent:
         
         # Get a minibatch of random samples from memory replay table
         minibatch = random.sample(self.replay_memory, MINIBATCH_SIZE)
+        if self.simple:
+            norm_factor = 9
+        else:
+            norm_factor = 255
 
         # Get *current states* from minibatch, then query NN model for Q values
-        current_states = np.array([transition[0] for transition in minibatch]) / 255 # also scale image
+        current_states = np.array([transition[0] for transition in minibatch]) / norm_factor # also scale image
         current_qs_list = self.model.predict(current_states) # the updated one
 
         # Get *future states* from minibatch, then query NN model for Q values; AFTER we take steps
         # When using target network, query it, otherwise main network should be queried
-        new_current_states = np.array([transition[3] for transition in minibatch]) / 255
+        new_current_states = np.array([transition[3] for transition in minibatch]) / norm_factor
         future_qs_list = self.target_model.predict(new_current_states)
         
         X = [] # INPUT feature set e.g. images
@@ -313,7 +345,7 @@ class DQNAgent:
         # Fit on all samples as one batch, log only on terminal state
         # we already did random sampling so no shuffle; callback to the custom one
         # ONLY FIT IF ON terminal_state, else nothing
-        self.model.fit(np.array(X) / 255, np.array(y), batch_size=MINIBATCH_SIZE, 
+        self.model.fit(np.array(X) / norm_factor, np.array(y), batch_size=MINIBATCH_SIZE, 
                        verbose=0, shuffle=False, callbacks=[self.tensorboard] if terminal_state else None)
         
         # Update target network counter every episode, so determine if we want update target_model
@@ -345,7 +377,7 @@ if __name__ == "__main__":
     MIN_EPSILON = 0.001
     
     #  Stats settings
-    AGGREGATE_STATS_EVERY = 1  # episodes
+    AGGREGATE_STATS_EVERY = 50  # episodes
     SHOW_PREVIEW = True
     
     
@@ -370,7 +402,7 @@ if __name__ == "__main__":
 
 
     ### DQN setup
-    agent = DQNAgent()
+    agent = DQNAgent(simple=True)
     
     # Iterate over episodes
     for episode in tqdm(range(1, EPISODES + 1), ascii=True, unit='episodes'):
@@ -391,17 +423,40 @@ if __name__ == "__main__":
             if np.random.random() > epsilon:
                 # Get action from Q table
                 action = np.argmax(agent.get_qs(current_state))
+                a = "best   action"
             else:
                 # Get random action
                 action = np.random.randint(0, env.ACTION_SPACE_SIZE)
+                a = "random action"
     
             new_state, reward, done = env.step(action)
     
             # Transform new continous state to new discrete state and count reward
             episode_reward += reward
     
-            if SHOW_PREVIEW and not episode % AGGREGATE_STATS_EVERY:
-                env.render()
+            if SHOW_PREVIEW and not episode % AGGREGATE_STATS_EVERY:                
+                go = ""
+                if action == 0:
+                    go = "BOTTOM_RIGHT"
+                elif action == 1:
+                    go = "TOP_LEFT"
+                elif action == 2:
+                    go = "TOP_RIGHT"
+                elif action == 3:
+                    go = "BOTTOM_LEFT"
+                elif action == 4:
+                    go = "RIGHT"
+                elif action == 5:
+                    go = "LEFT"
+                elif action == 6:
+                    go = "TOP"
+                elif action == 7:
+                    go = "BOTTOM"
+                elif action == 8:
+                    go = "STAY"
+                print("moving {} by {} from {} to {}; got reward {}".format(go.ljust(12), a, current_state, new_state, reward))
+                
+                env.render(0.2)
     
             # Every step we update replay memory and train main network
             agent.update_replay_memory((current_state, action, reward, new_state, done))

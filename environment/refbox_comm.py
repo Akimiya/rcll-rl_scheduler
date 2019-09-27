@@ -7,6 +7,7 @@ import struct
 import traceback
 import threading
 import datetime as dt
+import numpy as np
 from collections import OrderedDict
 from copy import deepcopy # more performant then dict()
 
@@ -61,6 +62,47 @@ NOT_NEED = ["RobotInfo",
             "BeaconSignal",
             "MachineReportInfo" # Not supported
             ]
+
+def create_order(fill=False, amount=False, compet=False, window=False):
+    # enum bases red = 1, black, silver
+    base = int(np.random.uniform(1, 4))
+    
+    # number of rings (no information on distribution)
+    rnd = np.random.uniform()
+    if rnd <= 0.5:
+        num_rings = 1
+    elif rnd <= 0.8:
+        num_rings = 2
+    elif rnd <= 1:
+        num_rings = 3
+    # enum rings blue = 1, green, oragne, yellow
+    rings = [int(np.random.uniform(1, 5)) for _ in range(num_rings)] + [0] * (3 - num_rings)
+    
+    # enum caps black = 1, grey
+    cap = int(np.random.uniform(1, 3))
+    
+    # number of requested products
+    if amount == True:
+        num_products = [int(np.random.uniform(1, 3))]
+    else:
+        num_products = [0] if fill else []
+    
+    # if order is competitive
+    if compet == True:
+        competitive = [int(np.random.uniform(0, 2))]
+    else:
+        competitive = [0] if fill else []
+        
+    # the delivery window
+    minimum_window = 120
+    if window == True:
+        start = int(np.random.uniform(1, 1021 - minimum_window))
+        end = int(np.random.uniform(start + minimum_window, 1021))
+        delivery_window = [start, end]
+    else:
+        delivery_window = [0, 0] if fill else []
+    
+    return [base] + rings + [cap] + num_products + competitive + delivery_window
 
 # specifies how to encode the specific field
 def create_byte_form(field_size):
