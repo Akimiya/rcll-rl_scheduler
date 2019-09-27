@@ -83,7 +83,13 @@ class env_rcll():
         self.SENSELESS_ACTION = -30
         self.CORRECT_STEP = 1
         self.INCORRECT_STEP = -10
+        self.FINISHED_ORDER = 20
     
+    def get_observation(self):
+        # as shape does not matter, we stack a vector for now
+        observation = sum(self.orders, []) + self.pipeline
+        
+        return observation
     
     # reset all parameters to an initial game state
     def reset(self):
@@ -97,10 +103,7 @@ class env_rcll():
         self.pipeline = [0] * 4
         self.pipeline_cap = 0 # track cap seperately for each pipeline as not needed in state
         
-        # as shape does not matter, we stack a vector for now
-        observation = sum(self.orders, []) + self.pipeline
-        
-        return observation
+        return self.get_observation()
 
     def step(self, action):
         self.episode_step += 1
@@ -128,12 +131,13 @@ class env_rcll():
             self.pipeline[:] = [0] * 4
             self.pipeline_cap = 0
         
+        
         ### getting reward
         if self.order_stage == 0:
             # senseless action
             if action_type != 1:
                 reward = self.SENSELESS_ACTION
-#                done = True
+                done = True
             else:
                 for order in self.orders:
                     if order[0] == action_color:
@@ -150,7 +154,7 @@ class env_rcll():
         elif self.order_stage == 1:
             if action_type != 2:
                 reward = self.SENSELESS_ACTION
-#                done = True
+                done = True
             else:
                 for order in self.orders:
                     # using free_ring from the action step
@@ -168,25 +172,32 @@ class env_rcll():
             # senseless action
             if action_type != 2 and action_type != 3:
                 reward = self.SENSELESS_ACTION
-#                done = True
+                done = True
             else:
-                for order in self.orders:
-                    if order[0] == action_color:
-                        reward = self.CORRECT_STEP
-                        no_such_order = False
-                        break
-                    else:
-                        no_such_order = True
+                # got another ring
+                if action_type == 2:
+                    for order in self.orders:
+                        if order[free_ring] == action_color:
+                            reward = self.CORRECT_STEP
+                            no_such_order = False
+                            break
+                        else:
+                            no_such_order = True
+                # got the cap
+                elif action_type == 3:
+                    for order in self.orders:
+                        if order[4] == action_color:
+                            reward = self.FINISHED_ORDER
+                            no_such_order = False
+                            break
+                        else:
+                            no_such_order = True
+                            
                 if no_such_order:
                     reward = self.INCORRECT_STEP
-            
-                self.order_stage = 1
         
-
-        if reward == self.FOOD_REWARD or reward == - self.ENEMY_PENALTY or self.episode_step >= 200:
-            done = True
-
-        return new_observation, reward, done
+        
+        return self.get_observation(), reward, done
 
 
 if __name__ == "__main__":
