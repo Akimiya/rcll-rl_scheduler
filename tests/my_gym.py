@@ -18,6 +18,8 @@ import random
 import os
 #import cv2
 
+from env_orders import env_rcll
+
 
 # Own Tensorboard class, as per default it updates on every .fit()
 class ModifiedTensorBoard(TensorBoard):
@@ -215,9 +217,11 @@ class DQNAgent:
         # Main model / Training network; using dot fit (trained) every single step
         if self.simple:
             self.model = self.create_model_simple()
+#            self.norm_factor = 9
+            self.norm_factor = 1
         else:
             self.model = self.create_model()
-        
+            self.norm_factor = 255
 
         # prediction model / Target network; dot predict for every single step the agent takes
         if self.simple:
@@ -268,8 +272,8 @@ class DQNAgent:
         model = Sequential()
         
         # input is the 4 elements long touple
-        model.add(Dense(10, activation='relu', input_shape=(4,)))
-        model.add(Dense(10, activation='relu'))
+        model.add(Dense(30, activation='relu', input_shape=(19,)))
+        model.add(Dense(30, activation='relu'))
 #        model.add(Dense(10, activation='relu'))
 
         # the output llayer, ACTION_SPACE_SIZE = how many choices (9)
@@ -290,9 +294,9 @@ class DQNAgent:
         # unpack state with the * Elements from this iterable are treated as if they were additional positional arguments
         s = np.array(state)
         if self.simple:
-            ret = self.model.predict(s[np.newaxis,:] / 9)
+            ret = self.model.predict(s[np.newaxis,:] / self.norm_factor)
         else:
-            ret = self.model.predict(s.reshape(-1, *s.shape) / 255)[0]
+            ret = self.model.predict(s.reshape(-1, *s.shape) / self.norm_factor)[0]
         return ret
     
      # Trains main network every step during episode
@@ -304,18 +308,14 @@ class DQNAgent:
         
         # Get a minibatch of random samples from memory replay table
         minibatch = random.sample(self.replay_memory, MINIBATCH_SIZE)
-        if self.simple:
-            norm_factor = 9
-        else:
-            norm_factor = 255
 
         # Get *current states* from minibatch, then query NN model for Q values
-        current_states = np.array([transition[0] for transition in minibatch]) / norm_factor # also scale image
+        current_states = np.array([transition[0] for transition in minibatch]) / self.norm_factor # also scale image
         current_qs_list = self.model.predict(current_states) # the updated one
 
         # Get *future states* from minibatch, then query NN model for Q values; AFTER we take steps
         # When using target network, query it, otherwise main network should be queried
-        new_current_states = np.array([transition[3] for transition in minibatch]) / norm_factor
+        new_current_states = np.array([transition[3] for transition in minibatch]) / self.norm_factor
         future_qs_list = self.target_model.predict(new_current_states)
         
         X = [] # INPUT feature set e.g. images
@@ -345,7 +345,7 @@ class DQNAgent:
         # Fit on all samples as one batch, log only on terminal state
         # we already did random sampling so no shuffle; callback to the custom one
         # ONLY FIT IF ON terminal_state, else nothing
-        self.model.fit(np.array(X) / norm_factor, np.array(y), batch_size=MINIBATCH_SIZE, 
+        self.model.fit(np.array(X) / self.norm_factor, np.array(y), batch_size=MINIBATCH_SIZE, 
                        verbose=0, shuffle=False, callbacks=[self.tensorboard] if terminal_state else None)
         
         # Update target network counter every episode, so determine if we want update target_model
@@ -364,25 +364,26 @@ if __name__ == "__main__":
     MIN_REPLAY_MEMORY_SIZE = 1000  # Minimum number of steps in a memory to start training
     MINIBATCH_SIZE = 64  # How many steps (samples) to use for training
     UPDATE_TARGET_EVERY = 5  # Terminal states (end of episodes)
-    MODEL_NAME = '2x256'
-    MIN_REWARD = -200  # For model save, as -300 for when an enemy hit
+    MODEL_NAME = 'rcll_v3'
+    MIN_REWARD = -5  # For model save, as -300 for when an enemy hit
     MEMORY_FRACTION = 0.20
     
     # Environment settings
-    EPISODES = 20000
+    EPISODES = 50000
     
     # Exploration settings
-    epsilon = 0.5  # not a constant, going to be decayed
-    EPSILON_DECAY = 0.99975
+    epsilon = 0.6  # not a constant, going to be decayed
+    EPSILON_DECAY = 0.99995
     MIN_EPSILON = 0.001
     
     #  Stats settings
-    AGGREGATE_STATS_EVERY = 50  # episodes
+    AGGREGATE_STATS_EVERY = 5  # episodes
     SHOW_PREVIEW = True
     
     
     ### Environment setup
-    env = BlobEnv()
+#    env = BlobEnv()
+    env = env_rcll()
 
     # For stats
     ep_rewards = [-200]
@@ -435,28 +436,28 @@ if __name__ == "__main__":
             episode_reward += reward
     
             if SHOW_PREVIEW and not episode % AGGREGATE_STATS_EVERY:                
-                go = ""
-                if action == 0:
-                    go = "BOTTOM_RIGHT"
-                elif action == 1:
-                    go = "TOP_LEFT"
-                elif action == 2:
-                    go = "TOP_RIGHT"
-                elif action == 3:
-                    go = "BOTTOM_LEFT"
-                elif action == 4:
-                    go = "RIGHT"
-                elif action == 5:
-                    go = "LEFT"
-                elif action == 6:
-                    go = "TOP"
-                elif action == 7:
-                    go = "BOTTOM"
-                elif action == 8:
-                    go = "STAY"
-                print("moving {} by {} from {} to {}; got reward {}".format(go.ljust(12), a, current_state, new_state, reward))
-                
-                env.render(0.2)
+#                go = ""
+#                if action == 0:
+#                    go = "BOTTOM_RIGHT"
+#                elif action == 1:
+#                    go = "TOP_LEFT"
+#                elif action == 2:
+#                    go = "TOP_RIGHT"
+#                elif action == 3:
+#                    go = "BOTTOM_LEFT"
+#                elif action == 4:
+#                    go = "RIGHT"
+#                elif action == 5:
+#                    go = "LEFT"
+#                elif action == 6:
+#                    go = "TOP"
+#                elif action == 7:
+#                    go = "BOTTOM"
+#                elif action == 8:
+#                    go = "STAY"
+#                print("moving {} by {} from {} to {}; got reward {}".format(go.ljust(12), a, current_state, new_state, reward))
+                print("taking {} {} giving {} reward or total {} and done={} | {}".format(a, action, reward, episode_reward, done, epsilon))
+                env.render()
     
             # Every step we update replay memory and train main network
             agent.update_replay_memory((current_state, action, reward, new_state, done))
@@ -475,6 +476,7 @@ if __name__ == "__main__":
     
             # Save model, but only when min reward is greater or equal a set value
             if min_reward >= MIN_REWARD:
+                MIN_REWARD += 1 # only save better models
                 agent.model.save(f'models/{MODEL_NAME}__{max_reward:_>7.2f}max_{average_reward:_>7.2f}avg_{min_reward:_>7.2f}min__{int(time.time())}.model')
     
         # Decay epsilon, same as before
