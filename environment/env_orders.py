@@ -58,6 +58,7 @@ class env_rcll():
         # rewards
         self.SENSELESS_ACTION = -20
         self.CORRECT_STEP = 10
+        self.DISCART_ORDER = -2
         self.INCORRECT_STEP = -10
         self.FINISHED_ORDER = 20
         
@@ -130,6 +131,8 @@ class env_rcll():
         elif action_type == 4:
             self.pipeline[:] = [0] * 4
             self.pipeline_cap = 0
+            reward = self.DISCART_ORDER
+            return self.get_observation(), reward, done
         
         
         ### getting reward
