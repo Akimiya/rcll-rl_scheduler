@@ -85,7 +85,7 @@ class env_rcll():
         self.order_stage = 0 # track what assembly step we are at
         self.pipeline = [0] * 4
         self.pipeline_cap = 0 # track cap seperately for each pipeline as not needed in state
-        self.doing_order = None
+        self.doing_order = []
         
         return self.get_observation()
 
@@ -129,9 +129,15 @@ class env_rcll():
             self.pipeline_cap = action_color
         # discard product
         elif action_type == 4:
-            self.pipeline[:] = [0] * 4
-            self.pipeline_cap = 0
+            # TODO: needs to handle cases where it gets positive reward and discards indefinitely
+            self.order_stage = 0 # track what assembly step we are at
+            self.pipeline = [0] * 4
+            self.pipeline_cap = 0 # track cap seperately for each pipeline as not needed in state
+            self.doing_order = []
+            
             reward = self.DISCART_ORDER
+            if self.episode_step >= 11:
+                done = True
             return self.get_observation(), reward, done
         
         
@@ -142,15 +148,14 @@ class env_rcll():
                 reward = self.SENSELESS_ACTION
                 done = True
             else:
+                found = False
                 for idx, order in enumerate(self.orders):
                     if order[0] == action_color:
                         reward = self.CORRECT_STEP
-                        no_such_order = False
-                        self.doing_order = idx
-                        break
-                    else:
-                        no_such_order = True
-                if no_such_order:
+                        self.doing_order.append(idx)
+                        found = True
+                        
+                if not found:
                     reward = self.INCORRECT_STEP
                     done = True
             
@@ -161,9 +166,12 @@ class env_rcll():
                 reward = self.SENSELESS_ACTION
                 done = True
             else:
-                if self.orders[self.doing_order][free_ring] == action_color:
-                    reward = self.CORRECT_STEP
-                else:
+                found = False
+                for idx in self.doing_order:
+                    if self.orders[idx][free_ring] == action_color:
+                        reward = self.CORRECT_STEP
+                        found = True
+                if not found:
                     reward = self.INCORRECT_STEP
                     done = True
             
@@ -176,31 +184,34 @@ class env_rcll():
             else:
                 # got another ring
                 if action_type == 2:
-                    if self.orders[self.doing_order][free_ring] == action_color:
-                        reward = self.CORRECT_STEP
-                        no_such_order = False
-                    else:
-                        no_such_order = True
+                    found = False
+                    for idx in self.doing_order:
+                        if self.orders[idx][free_ring] == action_color:
+                            reward = self.CORRECT_STEP
+                            found = True
+                    if not found:
+                        reward = self.INCORRECT_STEP
+                        done = True
                 # got the cap
                 elif action_type == 3:
-                    if self.orders[self.doing_order][4] == action_color:
-                        # check is full order is complete, pipeline does not include cap
-                        for idx, part in  enumerate(self.orders[self.doing_order][:-1]):
-                            if self.pipeline[idx] != part:
-                                no_such_order = True
-                                break
-                            else:
-                                no_such_order = False
-                        
-                        # will be overwritten if wrong, done in any case
-                        reward = self.FINISHED_ORDER
-                        done = True
-                    else:
-                        no_such_order = True
-                            
-                if no_such_order:
-                    reward = self.INCORRECT_STEP
                     done = True
+                    reward = self.INCORRECT_STEP # default to be overwritten
+                    
+                    for idx in self.doing_order:
+                        if self.orders[idx][4] == action_color:
+                            # check is full order is complete, pipeline does not include cap
+                            for i, part in  enumerate(self.orders[idx][:-1]):
+                                if self.pipeline[i] == part:
+                                    found = True # we want always this branch
+                                else:
+                                    found = False
+                                    break
+                            
+                            if found:
+                                reward = self.FINISHED_ORDER
+                                break # if the complete check passes we leave completely
+                            
+                    
         
         return self.get_observation(), reward, done
 
@@ -225,4 +236,4 @@ if __name__ == "__main__":
     
     
     
-    print("Main closed")
+    print("Please import the file")

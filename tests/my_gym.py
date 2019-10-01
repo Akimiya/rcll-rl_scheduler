@@ -369,11 +369,11 @@ if __name__ == "__main__":
     MEMORY_FRACTION = 0.20
     
     # Environment settings
-    EPISODES = 50000
+    EPISODES = 80000
     
     # Exploration settings
-    epsilon = 0.6  # not a constant, going to be decayed
-    EPSILON_DECAY = 0.99995
+    epsilon = 0.5  # not a constant, going to be decayed
+    EPSILON_DECAY = 0.99997
     MIN_EPSILON = 0.001
     
     #  Stats settings
@@ -422,13 +422,24 @@ if __name__ == "__main__":
         while not done:
             # This part stays mostly the same, the change is to query a model for Q values
             if np.random.random() > epsilon:
-                # Get action from Q table
-                action = np.argmax(agent.get_qs(current_state))
                 a = "best   action"
+                # Get action from Q table
+                options = agent.get_qs(current_state)
+                # TODO: does how does it influence ignoring one output? Find better approach
+                options[0][9] = options[0][0] - 1 # we dont use discard; make not max
+                action = np.argmax(options)
+                agent.tensorboard.update_stats(discard=options[0][9])
             else:
-                # Get random action
-                action = np.random.randint(0, env.ACTION_SPACE_SIZE)
-                a = "random action"
+                order = env.orders
+                a = "random action"# ({} => {})".format(order, env.doing_order)
+                # Get random *viable* action (excluding not tracking order)
+                phase = env.order_stage
+                if phase == 0:
+                    action = np.random.randint(0, 3)
+                elif phase == 1:
+                    action = np.random.randint(3, 7)
+                elif phase == 2:
+                    action = np.random.randint(3, 9) # currently includes more then needed, but no discard
     
             new_state, reward, done = env.step(action)
     
