@@ -50,7 +50,7 @@ def create_order(fill=False, amount=False, compet=False, window=False):
     else:
         delivery_window = [0, 0] if fill else []
     
-    return [base] + rings + [cap] + num_products + competitive + delivery_window
+    return [base] + rings + [cap] + num_products + competitive + delivery_window, num_rings
 
 
 class env_rcll():
@@ -81,7 +81,12 @@ class env_rcll():
         
         self.num_orders = 3
         # main features
-        self.orders = [create_order() for _ in range(self.num_orders)]
+        self.orders = []
+        self.complexities = []
+        for _ in range(self.num_orders):
+            order, complexity = create_order()
+            self.orders.append(order)
+            self.complexities.append(complexity)
         self.order_stage = 0 # track what assembly step we are at
         self.pipeline = [0] * 4
         self.pipeline_cap = 0 # track cap seperately for each pipeline as not needed in state

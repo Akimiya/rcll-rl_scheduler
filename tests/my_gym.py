@@ -377,7 +377,7 @@ if __name__ == "__main__":
     MIN_EPSILON = 0.001
     
     #  Stats settings
-    AGGREGATE_STATS_EVERY = 5  # episodes
+    AGGREGATE_STATS_EVERY = 1  # episodes
     SHOW_PREVIEW = True
     
     
@@ -404,6 +404,8 @@ if __name__ == "__main__":
 
     ### DQN setup
     agent = DQNAgent(simple=True)
+    
+    order_selection = [0] * 3
     
     # Iterate over episodes
     for episode in tqdm(range(1, EPISODES + 1), ascii=True, unit='episodes'):
@@ -445,6 +447,13 @@ if __name__ == "__main__":
     
             # Transform new continous state to new discrete state and count reward
             episode_reward += reward
+            
+            # debug analysis on which oder finished
+            if reward == 20:
+                for o in env.doing_order:
+                    order_selection[o] += 1
+                    print(env.complexities, env.doing_order)
+#                    if o max(env.complexities)
     
             if SHOW_PREVIEW and not episode % AGGREGATE_STATS_EVERY:                
 #                go = ""
@@ -467,7 +476,7 @@ if __name__ == "__main__":
 #                elif action == 8:
 #                    go = "STAY"
 #                print("moving {} by {} from {} to {}; got reward {}".format(go.ljust(12), a, current_state, new_state, reward))
-                print("taking {} {} giving {} reward or total {} and done={} | {}".format(a, action, reward, episode_reward, done, epsilon))
+                print("taking {} {} giving {} reward with total {} and done={} || selected: {} || {}".format(a, action, reward, episode_reward, done, order_selection, epsilon))
                 env.render()
     
             # Every step we update replay memory and train main network
@@ -479,7 +488,7 @@ if __name__ == "__main__":
     
         # Append episode reward to a list and log stats (every given number of episodes)
         ep_rewards.append(episode_reward)
-        if not episode % AGGREGATE_STATS_EVERY or episode == 1:
+        if not episode % AGGREGATE_STATS_EVERY and episode >= 5000:
             average_reward = sum(ep_rewards[-AGGREGATE_STATS_EVERY:])/len(ep_rewards[-AGGREGATE_STATS_EVERY:])
             min_reward = min(ep_rewards[-AGGREGATE_STATS_EVERY:])
             max_reward = max(ep_rewards[-AGGREGATE_STATS_EVERY:])
