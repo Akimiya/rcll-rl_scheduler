@@ -364,7 +364,7 @@ if __name__ == "__main__":
     MIN_REPLAY_MEMORY_SIZE = 1000  # Minimum number of steps in a memory to start training
     MINIBATCH_SIZE = 64  # How many steps (samples) to use for training
     UPDATE_TARGET_EVERY = 5  # Terminal states (end of episodes)
-    MODEL_NAME = 'rcll_v3'
+    MODEL_NAME = 'rcll_v4'
     MIN_REWARD = -5  # For model save, as -300 for when an enemy hit
     MEMORY_FRACTION = 0.20
     
@@ -406,6 +406,7 @@ if __name__ == "__main__":
     agent = DQNAgent(simple=True)
     
     order_selection = [0] * 3
+    order_complexities = [0] * 4
     
     # Iterate over episodes
     for episode in tqdm(range(1, EPISODES + 1), ascii=True, unit='episodes'):
@@ -452,8 +453,24 @@ if __name__ == "__main__":
             if reward == 20:
                 for o in env.doing_order:
                     order_selection[o] += 1
-                    print(env.complexities, env.doing_order)
-#                    if o max(env.complexities)
+                    
+                    complexity_took = 3 - env.orders[o][1:4].count(0)
+                    order_complexities[complexity_took - 1] += 1
+                    if complexity_took < max(env.complexities):
+                        order_complexities[3] -= 1
+                
+                # testing behavoir for duplicates
+                if len(env.doing_order) != 1: 
+                    print("taking {} {} giving {} reward with total {} and done={} || selected: {}{} || {}".format(a, action, reward, episode_reward, done, order_selection, order_complexities, epsilon))
+                    env.render()
+                    assert False
+
+                if sum(order_selection) % 100 == 0:
+                    agent.tensorboard.update_stats(CC1=order_complexities[0])
+                    agent.tensorboard.update_stats(CC2=order_complexities[1])
+                    agent.tensorboard.update_stats(CC3=order_complexities[2])
+                    
+                    order_complexities = [0] * 4 # reset
     
             if SHOW_PREVIEW and not episode % AGGREGATE_STATS_EVERY:                
 #                go = ""
@@ -476,7 +493,7 @@ if __name__ == "__main__":
 #                elif action == 8:
 #                    go = "STAY"
 #                print("moving {} by {} from {} to {}; got reward {}".format(go.ljust(12), a, current_state, new_state, reward))
-                print("taking {} {} giving {} reward with total {} and done={} || selected: {} || {}".format(a, action, reward, episode_reward, done, order_selection, epsilon))
+                print("taking {} {} giving {} reward with total {} and done={} || selected: {}{} || {}".format(a, action, reward, episode_reward, done, order_selection, order_complexities, epsilon))
                 env.render()
     
             # Every step we update replay memory and train main network

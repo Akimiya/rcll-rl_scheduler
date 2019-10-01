@@ -171,14 +171,17 @@ class env_rcll():
                 reward = self.SENSELESS_ACTION
                 done = True
             else:
-                found = False
+                found = []
                 for idx in self.doing_order:
                     if self.orders[idx][free_ring] == action_color:
                         reward = self.CORRECT_STEP
-                        found = True
+                        found.append(idx)
+                        
                 if not found:
                     reward = self.INCORRECT_STEP
                     done = True
+                else:
+                    self.doing_order[:] = found
             
                 self.order_stage = 2 # have at least one ring
         elif self.order_stage == 2:
@@ -189,19 +192,22 @@ class env_rcll():
             else:
                 # got another ring
                 if action_type == 2:
-                    found = False
+                    found = []
                     for idx in self.doing_order:
                         if self.orders[idx][free_ring] == action_color:
                             reward = self.CORRECT_STEP
-                            found = True
+                            found.append(idx)
                     if not found:
                         reward = self.INCORRECT_STEP
                         done = True
+                    else:
+                        self.doing_order[:] = found
                 # got the cap
                 elif action_type == 3:
                     done = True
                     reward = self.INCORRECT_STEP # default to be overwritten
                     
+                    tmp = []
                     for idx in self.doing_order:
                         if self.orders[idx][4] == action_color:
                             # check is full order is complete, pipeline does not include cap
@@ -214,8 +220,10 @@ class env_rcll():
                             
                             if found:
                                 reward = self.FINISHED_ORDER
+                                tmp.append(idx)
                                 break # if the complete check passes we leave completely
                             
+                    self.doing_order[:] = tmp
                     
         
         return self.get_observation(), reward, done
