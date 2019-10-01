@@ -17,9 +17,9 @@ def create_order(fill=False, amount=False, compet=False, window=False):
     
     # number of rings (no information on distribution)
     rnd = np.random.uniform()
-    if rnd <= 0.4:
+    if rnd <= 0.33:
         num_rings = 1
-    elif rnd <= 0.7:
+    elif rnd <= 0.66:
         num_rings = 2
     elif rnd <= 1:
         num_rings = 3

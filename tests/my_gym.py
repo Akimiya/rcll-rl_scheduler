@@ -364,7 +364,7 @@ if __name__ == "__main__":
     MIN_REPLAY_MEMORY_SIZE = 1000  # Minimum number of steps in a memory to start training
     MINIBATCH_SIZE = 64  # How many steps (samples) to use for training
     UPDATE_TARGET_EVERY = 5  # Terminal states (end of episodes)
-    MODEL_NAME = 'rcll_v4'
+    MODEL_NAME = 'rcll_v5'
     MIN_REWARD = -5  # For model save, as -300 for when an enemy hit
     MEMORY_FRACTION = 0.20
     
@@ -442,7 +442,15 @@ if __name__ == "__main__":
                 elif phase == 1:
                     action = np.random.randint(3, 7)
                 elif phase == 2:
-                    action = np.random.randint(3, 9) # currently includes more then needed, but no discard
+                    doing = env.doing_order[0]
+                    has_rings = env.orders[doing][1:4].count(0)
+                    done_rings = env.pipeline[1:4].count(0)
+                    if has_rings < done_rings:
+                        # if still missing some rings
+                        action = np.random.randint(3, 7)
+                    else:
+                        # finishing with cap
+                        action = np.random.randint(7, 9)
     
             new_state, reward, done = env.step(action)
     
@@ -451,10 +459,10 @@ if __name__ == "__main__":
             
             # debug analysis on which oder finished
             if reward == 20:
-                for o in env.doing_order:
-                    order_selection[o] += 1
+                for doing in env.doing_order:
+                    order_selection[doing] += 1
                     
-                    complexity_took = 3 - env.orders[o][1:4].count(0)
+                    complexity_took = 3 - env.orders[doing][1:4].count(0)
                     order_complexities[complexity_took - 1] += 1
                     if complexity_took < max(env.complexities):
                         order_complexities[3] -= 1
