@@ -427,11 +427,28 @@ if __name__ == "__main__":
             if np.random.random() > epsilon:
                 a = "best   action"
                 # Get action from Q table
-                options = agent.get_qs(current_state)
-                # TODO: does how does it influence ignoring one output? Find better approach
-                options[0][9] = options[0][0] - 1 # we dont use discard; make not max
-                action = np.argmax(options)
-                agent.tensorboard.update_stats(discard=options[0][9])
+                options = agent.get_qs(current_state)[0]
+                # TODO: does how does it influence ignoring some output? Find better approach, as some actions may be escalating?
+#                options[0][9] = options[0][0] - 1 # we dont use discard; make not max
+#                action = np.argmax(options)
+                agent.tensorboard.update_stats(discard=options[9])
+                
+                phase = env.order_stage
+                if phase == 0:
+                    action = np.argmax(options[0:3])
+                elif phase == 1:
+                    action = np.argmax(options[3:7]) + 3
+                elif phase == 2:
+                    doing = env.doing_order[0]
+                    has_rings = env.orders[doing][1:4].count(0)
+                    done_rings = env.pipeline[1:4].count(0)
+                    if has_rings < done_rings:
+                        # if still missing some rings
+                        action = np.argmax(options[3:7]) + 3
+                    else:
+                        # finishing with cap
+                        action = np.argmax(options[7:9]) + 7
+                
             else:
                 order = env.orders
                 a = "random action"# ({} => {})".format(order, env.doing_order)
@@ -501,7 +518,8 @@ if __name__ == "__main__":
 #                elif action == 8:
 #                    go = "STAY"
 #                print("moving {} by {} from {} to {}; got reward {}".format(go.ljust(12), a, current_state, new_state, reward))
-                print("taking {} {} giving {} reward with total {} and done={} || selected: {}{} || {}".format(a, action, reward, episode_reward, done, order_selection, order_complexities, epsilon))
+                print("taking {} {} (at {}) giving {} reward with total {} and done={} epsion={:.4f} || selected: {}{} || ".format(
+                        a, action, phase, reward, episode_reward, done, epsilon, order_selection, order_complexities))
                 env.render()
     
             # Every step we update replay memory and train main network
