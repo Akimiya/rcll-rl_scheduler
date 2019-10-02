@@ -190,8 +190,8 @@ class env_rcll():
 
             if not found:
                 reward = self.INCORRECT_STEP
-                if not has_ring:
-                    done = True # as it is not recoverable from having too many rings
+#                if not has_ring:
+                done = True # as it is not recoverable from having too many rings
             else:
                 self.doing_order[:] = found
                     
