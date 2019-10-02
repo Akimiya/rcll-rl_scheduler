@@ -364,7 +364,7 @@ if __name__ == "__main__":
     MIN_REPLAY_MEMORY_SIZE = 1000  # Minimum number of steps in a memory to start training
     MINIBATCH_SIZE = 64  # How many steps (samples) to use for training
     UPDATE_TARGET_EVERY = 5  # Terminal states (end of episodes)
-    MODEL_NAME = 'rcll_v5'
+    MODEL_NAME = 'rcll_v6'
     MIN_REWARD = -5  # For model save, as -300 for when an enemy hit
     MEMORY_FRACTION = 0.20
     
@@ -470,6 +470,7 @@ if __name__ == "__main__":
                         action = np.random.randint(7, 9)
     
             new_state, reward, done = env.step(action)
+            assert reward != -20
     
             # Transform new continous state to new discrete state and count reward
             episode_reward += reward
@@ -490,12 +491,12 @@ if __name__ == "__main__":
                     env.render()
                     assert False
 
-                if sum(order_selection) % 100 == 0:
-                    agent.tensorboard.update_stats(CC1=order_complexities[0])
-                    agent.tensorboard.update_stats(CC2=order_complexities[1])
-                    agent.tensorboard.update_stats(CC3=order_complexities[2])
-                    
-                    order_complexities = [0] * 4 # reset
+            if episode % 1000 == 0:
+                agent.tensorboard.update_stats(CC1=order_complexities[0])
+                agent.tensorboard.update_stats(CC2=order_complexities[1])
+                agent.tensorboard.update_stats(CC3=order_complexities[2])
+                
+                order_complexities = [0] * 4 # reset
     
             if SHOW_PREVIEW and not episode % AGGREGATE_STATS_EVERY:                
 #                go = ""

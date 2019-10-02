@@ -109,30 +109,31 @@ class env_rcll():
             action = 10 + action + 1
             
         
-        ### make an action (without rewards jet)
+        ##### UPDATING PRODUCT
         # format is a  two digit integer, first the category, second the color
         assert action >= 0 and action <= 99
         action_type = int(action / 10)
         action_color = action % 10
         
-        # getting a base
+        # applying the base
         if action_type == 1:
             self.pipeline[0] = action_color
             # TODO: random delay model, best a function
+        # applying the ring
         elif action_type == 2:
             # find next free (=0) ring slot
-            if 0 in self.pipeline: # TODO: remove ugly
-                free_ring = self.pipeline.index(0)
+            if 0 in self.pipeline[1:4]:
+                free_ring = self.pipeline.index(0) # TODO: Need to track manuaally at which ring
                 self.pipeline[free_ring] = action_color
             else:
                 # prelimary end if we have too many rings
                 reward = self.INCORRECT_STEP
                 done = True
                 return self.get_observation(), reward, done
-        # getting a cap
+        # applying the cap
         elif action_type == 3:
             self.pipeline_cap = action_color
-        # discard product
+        # discarding the product
         elif action_type == 4:
             # TODO: needs to handle cases where it gets positive reward and discards indefinitely
             self.order_stage = 0 # track what assembly step we are at
@@ -146,7 +147,8 @@ class env_rcll():
             return self.get_observation(), reward, done
         
         
-        ### getting reward
+        # TODO: update reward and update into one
+        ##### GETTING REWARD
         if self.order_stage == 0:
             # senseless action
             if action_type != 1:
@@ -163,8 +165,8 @@ class env_rcll():
                 if not found:
                     reward = self.INCORRECT_STEP
                     done = True
-            
-                self.order_stage = 1
+                else:
+                    self.order_stage = 1
             
         elif self.order_stage == 1:
             if action_type != 2:
@@ -182,9 +184,9 @@ class env_rcll():
                     done = True
                 else:
                     self.doing_order[:] = found
+                    self.order_stage = 2 # have at least one ring
             
-                self.order_stage = 2 # have at least one ring
-        elif self.order_stage == 2:
+        elif self.order_stage == 2: # TODO: move action check up here
             # senseless action
             if action_type != 2 and action_type != 3:
                 reward = self.SENSELESS_ACTION
@@ -193,18 +195,22 @@ class env_rcll():
                 # got another ring
                 if action_type == 2:
                     found = []
+                    has_ring = []
                     for idx in self.doing_order:
                         if self.orders[idx][free_ring] == action_color:
                             reward = self.CORRECT_STEP
                             found.append(idx)
+                        if self.orders[idx][free_ring] != 0:
+                            has_ring.append(idx)
                     if not found:
                         reward = self.INCORRECT_STEP
-                        done = True
+                        if not has_ring:
+                            done = True # as it is not recoverable from having too many rings
                     else:
                         self.doing_order[:] = found
                 # got the cap
                 elif action_type == 3:
-                    done = True
+                    done = True # as it is not recoverable or finished
                     reward = self.INCORRECT_STEP # default to be overwritten
                     
                     tmp = []
@@ -224,7 +230,10 @@ class env_rcll():
                                 break # if the complete check passes we leave completely
                             
                     self.doing_order[:] = tmp
-                    
+        
+        # we stop if we try for too long
+        if self.episode_step >= 11:
+            done = True
         
         return self.get_observation(), reward, done
 
