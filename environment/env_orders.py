@@ -149,87 +149,79 @@ class env_rcll():
         
         # TODO: update reward and update into one
         ##### GETTING REWARD
-        if self.order_stage == 0:
-            # senseless action
-            if action_type != 1:
-                reward = self.SENSELESS_ACTION
-                done = True
-            else:
-                found = False
-                for idx, order in enumerate(self.orders):
-                    if order[0] == action_color:
-                        reward = self.CORRECT_STEP
-                        self.doing_order.append(idx)
-                        found = True
-                        
-                if not found:
-                    reward = self.INCORRECT_STEP
-                    done = True
-                else:
-                    self.order_stage = 1
-            
-        elif self.order_stage == 1:
-            if action_type != 2:
-                reward = self.SENSELESS_ACTION
-                done = True
-            else:
-                found = []
-                for idx in self.doing_order:
-                    if self.orders[idx][free_ring] == action_color:
-                        reward = self.CORRECT_STEP
-                        found.append(idx)
-                        
-                if not found:
-                    reward = self.INCORRECT_STEP
-                    done = True
-                else:
-                    self.doing_order[:] = found
-                    self.order_stage = 2 # have at least one ring
-            
-        elif self.order_stage == 2: # TODO: move action check up here
-            # senseless action
-            if action_type != 2 and action_type != 3:
-                reward = self.SENSELESS_ACTION
-                done = True
-            else:
-                # got another ring
-                if action_type == 2:
-                    found = []
-                    has_ring = []
-                    for idx in self.doing_order:
-                        if self.orders[idx][free_ring] == action_color:
-                            reward = self.CORRECT_STEP
-                            found.append(idx)
-                        if self.orders[idx][free_ring] != 0:
-                            has_ring.append(idx)
-                    if not found:
-                        reward = self.INCORRECT_STEP
-                        if not has_ring:
-                            done = True # as it is not recoverable from having too many rings
-                    else:
-                        self.doing_order[:] = found
-                # got the cap
-                elif action_type == 3:
-                    done = True # as it is not recoverable or finished
-                    reward = self.INCORRECT_STEP # default to be overwritten
+        if self.order_stage == 0 and action_type == 1:
+            found = False
+            for idx, order in enumerate(self.orders):
+                if order[0] == action_color:
+                    reward = self.CORRECT_STEP
+                    self.doing_order.append(idx)
+                    found = True
                     
-                    tmp = []
-                    for idx in self.doing_order:
-                        if self.orders[idx][4] == action_color:
-                            # check is full order is complete, pipeline does not include cap
-                            for i, part in  enumerate(self.orders[idx][:-1]):
-                                if self.pipeline[i] == part:
-                                    found = True # we want always this branch
-                                else:
-                                    found = False
-                                    break
-                            
-                            if found:
-                                reward = self.FINISHED_ORDER
-                                tmp.append(idx)
-                                break # if the complete check passes we leave completely
-                            
-                    self.doing_order[:] = tmp
+            if not found:
+                reward = self.INCORRECT_STEP
+                done = True
+            else:
+                self.order_stage = 1
+            
+        elif self.order_stage == 1 and action_type == 2:
+            found = []
+            for idx in self.doing_order:
+                if self.orders[idx][free_ring] == action_color:
+                    reward = self.CORRECT_STEP
+                    found.append(idx)
+                    
+            if not found:
+                reward = self.INCORRECT_STEP
+                done = True
+            else:
+                self.doing_order[:] = found
+                self.order_stage = 2 # have at least one ring
+
+        # got another ring
+        elif self.order_stage == 2 and action_type == 2:
+            found = []
+            has_ring = []
+            for idx in self.doing_order:
+                if self.orders[idx][free_ring] == action_color:
+                    reward = self.CORRECT_STEP
+                    found.append(idx)
+                if self.orders[idx][free_ring] != 0:
+                    has_ring.append(idx)
+
+            if not found:
+                reward = self.INCORRECT_STEP
+                if not has_ring:
+                    done = True # as it is not recoverable from having too many rings
+            else:
+                self.doing_order[:] = found
+                    
+        # got the cap
+        elif self.order_stage == 2 and action_type == 3:
+            done = True # as it is not recoverable or finished
+            reward = self.INCORRECT_STEP # default to be overwritten
+            
+            tmp = []
+            for idx in self.doing_order:
+                if self.orders[idx][4] == action_color:
+                    # check is full order is complete, pipeline does not include cap
+                    for i, part in  enumerate(self.orders[idx][:-1]):
+                        if self.pipeline[i] == part:
+                            found = True # we want always this branch
+                        else:
+                            found = False
+                            break
+                    
+                    if found:
+                        reward = self.FINISHED_ORDER
+                        tmp.append(idx)
+                        break # if the complete check passes we leave completely
+                    
+            self.doing_order[:] = tmp
+            
+        # senseless action
+        else:
+            reward = self.SENSELESS_ACTION
+            done = True
         
         # we stop if we try for too long
         if self.episode_step >= 11:

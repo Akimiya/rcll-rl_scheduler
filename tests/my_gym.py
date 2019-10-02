@@ -363,6 +363,7 @@ if __name__ == "__main__":
     REPLAY_MEMORY_SIZE = 50000  # How many last steps to keep for model training
     MIN_REPLAY_MEMORY_SIZE = 1000  # Minimum number of steps in a memory to start training
     MINIBATCH_SIZE = 64  # How many steps (samples) to use for training
+    # TODO: try changing below
     UPDATE_TARGET_EVERY = 5  # Terminal states (end of episodes)
     MODEL_NAME = 'rcll_v6'
     MIN_REWARD = -5  # For model save, as -300 for when an enemy hit
@@ -429,25 +430,25 @@ if __name__ == "__main__":
                 # Get action from Q table
                 options = agent.get_qs(current_state)[0]
                 # TODO: does how does it influence ignoring some output? Find better approach, as some actions may be escalating?
-#                options[0][9] = options[0][0] - 1 # we dont use discard; make not max
-#                action = np.argmax(options)
+                options[9] = options[0] - 1 # we dont use discard; make not max
+                action = np.argmax(options)
                 agent.tensorboard.update_stats(discard=options[9])
                 
                 phase = env.order_stage
-                if phase == 0:
-                    action = np.argmax(options[0:3])
-                elif phase == 1:
-                    action = np.argmax(options[3:7]) + 3
-                elif phase == 2:
-                    doing = env.doing_order[0]
-                    has_rings = env.orders[doing][1:4].count(0)
-                    done_rings = env.pipeline[1:4].count(0)
-                    if has_rings < done_rings:
-                        # if still missing some rings
-                        action = np.argmax(options[3:7]) + 3
-                    else:
-                        # finishing with cap
-                        action = np.argmax(options[7:9]) + 7
+#                if phase == 0:
+#                    action = np.argmax(options[0:3])
+#                elif phase == 1:
+#                    action = np.argmax(options[3:7]) + 3
+#                elif phase == 2:
+#                    doing = env.doing_order[0]
+#                    has_rings = env.orders[doing][1:4].count(0)
+#                    done_rings = env.pipeline[1:4].count(0)
+#                    if has_rings < done_rings:
+#                        # if still missing some rings
+#                        action = np.argmax(options[3:7]) + 3
+#                    else:
+#                        # finishing with cap
+#                        action = np.argmax(options[7:9]) + 7
                 
             else:
                 order = env.orders
@@ -459,18 +460,19 @@ if __name__ == "__main__":
                 elif phase == 1:
                     action = np.random.randint(3, 7)
                 elif phase == 2:
-                    doing = env.doing_order[0]
-                    has_rings = env.orders[doing][1:4].count(0)
-                    done_rings = env.pipeline[1:4].count(0)
-                    if has_rings < done_rings:
-                        # if still missing some rings
-                        action = np.random.randint(3, 7)
-                    else:
-                        # finishing with cap
-                        action = np.random.randint(7, 9)
+                    action = np.random.randint(3, 9) # currently includes more then needed, but no discard
+#                    doing = env.doing_order[0]
+#                    has_rings = env.orders[doing][1:4].count(0)
+#                    done_rings = env.pipeline[1:4].count(0)
+#                    if has_rings < done_rings:
+#                        # if still missing some rings
+#                        action = np.random.randint(3, 7)
+#                    else:
+#                        # finishing with cap
+#                        action = np.random.randint(7, 9)
     
             new_state, reward, done = env.step(action)
-            assert reward != -20
+#            assert reward != -20
     
             # Transform new continous state to new discrete state and count reward
             episode_reward += reward
@@ -491,12 +493,12 @@ if __name__ == "__main__":
                     env.render()
                     assert False
 
-            if episode % 1000 == 0:
-                agent.tensorboard.update_stats(CC1=order_complexities[0])
-                agent.tensorboard.update_stats(CC2=order_complexities[1])
-                agent.tensorboard.update_stats(CC3=order_complexities[2])
-                
-                order_complexities = [0] * 4 # reset
+                if sum(order_selection) % 100 == 0:
+                    agent.tensorboard.update_stats(CC1=order_complexities[0])
+                    agent.tensorboard.update_stats(CC2=order_complexities[1])
+                    agent.tensorboard.update_stats(CC3=order_complexities[2])
+                    
+                    order_complexities = [0] * 4 # reset
     
             if SHOW_PREVIEW and not episode % AGGREGATE_STATS_EVERY:                
 #                go = ""
@@ -532,7 +534,7 @@ if __name__ == "__main__":
     
         # Append episode reward to a list and log stats (every given number of episodes)
         ep_rewards.append(episode_reward)
-        if not episode % AGGREGATE_STATS_EVERY and episode >= 5000:
+        if not episode % AGGREGATE_STATS_EVERY and episode >= 1:
             average_reward = sum(ep_rewards[-AGGREGATE_STATS_EVERY:])/len(ep_rewards[-AGGREGATE_STATS_EVERY:])
             min_reward = min(ep_rewards[-AGGREGATE_STATS_EVERY:])
             max_reward = max(ep_rewards[-AGGREGATE_STATS_EVERY:])
