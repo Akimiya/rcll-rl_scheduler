@@ -13,10 +13,10 @@ from collections import deque
 from tqdm import tqdm
 from PIL import Image
 import time
+from datetime import datetime
 import numpy as np
 import random
 import os
-#import cv2
 
 from env_orders import env_rcll
 
@@ -237,7 +237,7 @@ class DQNAgent:
         self.replay_memory = deque(maxlen=REPLAY_MEMORY_SIZE)
 
         # Custom tensorboard object
-        self.tensorboard = ModifiedTensorBoard(log_dir="logs/{}-{}".format(MODEL_NAME, int(time.time())))
+        self.tensorboard = ModifiedTensorBoard(log_dir="logs/{}-{}".format(MODEL_NAME, datetime.now().strftime("%y%m%d_%H-%M-%S")))
 
         # Used to count when to update target network with main network's weights
         self.target_update_counter = 0
@@ -272,7 +272,7 @@ class DQNAgent:
         model = Sequential()
         
         # input is the 4 elements long touple
-        model.add(Dense(30, activation='relu', input_shape=(19,)))
+        model.add(Dense(30, kernel_initializer='uniform', activation='relu', input_shape=(19,)))
         model.add(Dense(30, activation='relu'))
 #        model.add(Dense(10, activation='relu'))
 
@@ -280,7 +280,8 @@ class DQNAgent:
         model.add(Dense(env.ACTION_SPACE_SIZE, activation='linear'))
         
         # adam optimizer with learning rate lr and track accuracy
-        model.compile(loss="mse", optimizer=Adam(lr=0.001), metrics=['accuracy'])
+        optimizer = Adam(lr=0.001)
+        model.compile(loss="mse", optimizer=optimizer, metrics=['accuracy'])
         
         return model
     
@@ -364,8 +365,8 @@ if __name__ == "__main__":
     MIN_REPLAY_MEMORY_SIZE = 1000  # Minimum number of steps in a memory to start training
     MINIBATCH_SIZE = 64  # How many steps (samples) to use for training
     # TODO: try changing below
-    UPDATE_TARGET_EVERY = 5  # Terminal states (end of episodes)
-    MODEL_NAME = 'rcll_v6'
+    UPDATE_TARGET_EVERY = 20  # Terminal states (end of episodes)
+    MODEL_NAME = 'rcll_v7'
     MIN_REWARD = -5  # For model save, as -300 for when an enemy hit
     MEMORY_FRACTION = 0.20
     
@@ -378,7 +379,7 @@ if __name__ == "__main__":
     MIN_EPSILON = 0.001
     
     #  Stats settings
-    AGGREGATE_STATS_EVERY = 1  # episodes
+    DEBUG_EVERY = 1  # episodes
     SHOW_PREVIEW = True
     
     
@@ -492,15 +493,8 @@ if __name__ == "__main__":
                     print("taking {} {} giving {} reward with total {} and done={} || selected: {}{} || {}".format(a, action, reward, episode_reward, done, order_selection, order_complexities, epsilon))
                     env.render()
                     assert False
-
-                if sum(order_selection) % 100 == 0:
-                    agent.tensorboard.update_stats(CC1=order_complexities[0])
-                    agent.tensorboard.update_stats(CC2=order_complexities[1])
-                    agent.tensorboard.update_stats(CC3=order_complexities[2])
-                    
-                    order_complexities = [0] * 4 # reset
     
-            if SHOW_PREVIEW and not episode % AGGREGATE_STATS_EVERY:                
+            if SHOW_PREVIEW and not episode % DEBUG_EVERY:
 #                go = ""
 #                if action == 0:
 #                    go = "BOTTOM_RIGHT"
@@ -534,15 +528,23 @@ if __name__ == "__main__":
     
         # Append episode reward to a list and log stats (every given number of episodes)
         ep_rewards.append(episode_reward)
-        if not episode % AGGREGATE_STATS_EVERY and episode >= 1:
-            average_reward = sum(ep_rewards[-AGGREGATE_STATS_EVERY:])/len(ep_rewards[-AGGREGATE_STATS_EVERY:])
-            min_reward = min(ep_rewards[-AGGREGATE_STATS_EVERY:])
-            max_reward = max(ep_rewards[-AGGREGATE_STATS_EVERY:])
-            agent.tensorboard.update_stats(reward_avg=average_reward, reward_min=min_reward, reward_max=max_reward, epsilon=epsilon)
+        write_every = 50
+        if episode % write_every == 0 and episode >= 0:
+            agent.tensorboard.update_stats(C1=order_complexities[0])
+            agent.tensorboard.update_stats(C2=order_complexities[1])
+            agent.tensorboard.update_stats(C3=order_complexities[2])
+            
+            order_complexities = [0] * 4 # reset
+            
+            average_reward = sum(ep_rewards[-write_every:])/len(ep_rewards[-write_every:])
+            min_reward = min(ep_rewards[-write_every:])
+            max_reward = max(ep_rewards[-write_every:])
+            agent.tensorboard.update_stats(reward_avg=average_reward, reward_min=min_reward, 
+                                           reward_max=max_reward, epsilon=epsilon)
     
             # Save model, but only when min reward is greater or equal a set value
             if min_reward >= MIN_REWARD:
-                MIN_REWARD += 1 # only save better models
+                MIN_REWARD = min_reward + 1 # only save better models
                 agent.model.save(f'models/{MODEL_NAME}__{max_reward:_>7.2f}max_{average_reward:_>7.2f}avg_{min_reward:_>7.2f}min__{int(time.time())}.model')
     
         # Decay epsilon, same as before
