@@ -208,7 +208,7 @@ if __name__ == "__main__":
     MINIBATCH_SIZE = 64  # How many steps (samples) to use for training
     # TODO: try changing below
     UPDATE_TARGET_EVERY = 20  # Terminal states (end of episodes)
-    MODEL_NAME = 'rcll_v7'
+    MODEL_NAME = 'rcll_v8_limit-random-actions'
     MIN_REWARD = -5  # For model save, as -300 for when an enemy hit
     MEMORY_FRACTION = 0.20
     
@@ -227,7 +227,7 @@ if __name__ == "__main__":
     
     ### Environment setup
 #    env = BlobEnv()
-    env = env_rcll()
+    env = env_rcll(normalize=True)
 
     # For stats
     ep_rewards = [-200]
@@ -272,10 +272,10 @@ if __name__ == "__main__":
                 a = "best   action"
                 # Get action from Q table
                 options = agent.get_qs(current_state)[0]
+                agent.tensorboard.update_stats(discard=options[9], cap_grey=options[8], base_red=options[0])
                 # TODO: does how does it influence ignoring some output? Find better approach, as some actions may be escalating?
                 options[9] = options[0] - 1 # we dont use discard; make not max
                 action = np.argmax(options)
-                agent.tensorboard.update_stats(discard=options[9])
                 
                 phase = env.order_stage
 #                if phase == 0:
@@ -283,9 +283,9 @@ if __name__ == "__main__":
 #                elif phase == 1:
 #                    action = np.argmax(options[3:7]) + 3
 #                elif phase == 2:
-#                    doing = env.doing_order[0]
-#                    has_rings = env.orders[doing][1:4].count(0)
-#                    done_rings = env.pipeline[1:4].count(0)
+#                    doing = env.doing_order[0] # assumption that only one order remains here
+#                    has_rings = 3 - env.orders[doing][1:4].count(0)
+#                    done_rings = 3 - env.pipeline[1:4].count(0)
 #                    if has_rings < done_rings:
 #                        # if still missing some rings
 #                        action = np.argmax(options[3:7]) + 3
@@ -303,16 +303,16 @@ if __name__ == "__main__":
                 elif phase == 1:
                     action = np.random.randint(3, 7)
                 elif phase == 2:
-                    action = np.random.randint(3, 9) # currently includes more then needed, but no discard
-#                    doing = env.doing_order[0]
-#                    has_rings = env.orders[doing][1:4].count(0)
-#                    done_rings = env.pipeline[1:4].count(0)
-#                    if has_rings < done_rings:
-#                        # if still missing some rings
-#                        action = np.random.randint(3, 7)
-#                    else:
-#                        # finishing with cap
-#                        action = np.random.randint(7, 9)
+#                    action = np.random.randint(3, 9) # currently includes more then needed, but no discard
+                    doing = env.doing_order[0]
+                    has_rings = env.orders[doing][1:4].count(0)
+                    done_rings = env.pipeline[1:4].count(0)
+                    if has_rings < done_rings:
+                        # if still missing some rings
+                        action = np.random.randint(3, 7)
+                    else:
+                        # finishing with cap
+                        action = np.random.randint(7, 9)
     
             new_state, reward, done = env.step(action)
 #            assert reward != -20

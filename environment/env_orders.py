@@ -16,6 +16,7 @@ def create_order(fill=False, amount=False, compet=False, window=False):
     base = int(np.random.uniform(1, 4))
     
     # number of rings (no information on distribution)
+    # TODO: add zero rings
     rnd = np.random.uniform()
     if rnd <= 0.33:
         num_rings = 1
@@ -54,7 +55,7 @@ def create_order(fill=False, amount=False, compet=False, window=False):
 
 
 class env_rcll():
-    def __init__(self):
+    def __init__(self, normalize=False):
         # rewards
         self.SENSELESS_ACTION = -20
         self.CORRECT_STEP = 10
@@ -63,11 +64,32 @@ class env_rcll():
         self.FINISHED_ORDER = 20
         
         self.ACTION_SPACE_SIZE = 3 + 4 + 2 + 1
+        
+        # there are 3 rings, so 4 repeats
+        self.ORDER_NORM_FACTOR = [3, 4, 4, 4, 2, 1, 1, 1020]
+        
+        self.normalize = normalize
     
     def get_observation(self):
         # as shape does not matter, we stack a vector for now
         # these are all orders and the pipeline in one
-        observation = sum(self.orders, []) + self.pipeline
+        
+        # normalize output
+        if self.normalize:
+            orders_norm = []
+            for order in self.orders:
+                order_norm = []
+                for idx, part in enumerate(order):
+                    order_norm.append(part / self.ORDER_NORM_FACTOR[idx])
+                orders_norm.append(order_norm)
+            
+            pip_norm = []
+            for idx, part in enumerate(self.pipeline):
+                pip_norm.append(part / self.ORDER_NORM_FACTOR[idx])
+                
+            observation = sum(orders_norm, []) + pip_norm
+        else:            
+            observation = sum(self.orders, []) + self.pipeline
         
         return observation
     
