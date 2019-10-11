@@ -114,7 +114,8 @@ class DQNAgent:
         model = Sequential()
         
         # input is the 4 elements long touple
-        model.add(Dense(30, kernel_initializer='uniform', activation='relu', input_shape=(19,)))
+        # , kernel_initializer='uniform'
+        model.add(Dense(30, activation='relu', input_shape=(19,)))
         model.add(Dense(30, activation='relu'))
 #        model.add(Dense(10, activation='relu'))
 
@@ -208,7 +209,7 @@ if __name__ == "__main__":
     MINIBATCH_SIZE = 64  # How many steps (samples) to use for training
     # TODO: try changing below
     UPDATE_TARGET_EVERY = 20  # Terminal states (end of episodes)
-    MODEL_NAME = 'rcll_v8_limit-random-actions'
+    MODEL_NAME = 'rcll_v8_limit-no-actions_norm'
     MIN_REWARD = -5  # For model save, as -300 for when an enemy hit
     MEMORY_FRACTION = 0.20
     
@@ -303,16 +304,16 @@ if __name__ == "__main__":
                 elif phase == 1:
                     action = np.random.randint(3, 7)
                 elif phase == 2:
-#                    action = np.random.randint(3, 9) # currently includes more then needed, but no discard
-                    doing = env.doing_order[0]
-                    has_rings = env.orders[doing][1:4].count(0)
-                    done_rings = env.pipeline[1:4].count(0)
-                    if has_rings < done_rings:
-                        # if still missing some rings
-                        action = np.random.randint(3, 7)
-                    else:
-                        # finishing with cap
-                        action = np.random.randint(7, 9)
+                    action = np.random.randint(3, 9) # currently includes more then needed, but no discard
+#                    doing = env.doing_order[0]
+#                    has_rings = env.orders[doing][1:4].count(0)
+#                    done_rings = env.pipeline[1:4].count(0)
+#                    if has_rings < done_rings:
+#                        # if still missing some rings
+#                        action = np.random.randint(3, 7)
+#                    else:
+#                        # finishing with cap
+#                        action = np.random.randint(7, 9)
     
             new_state, reward, done = env.step(action)
 #            assert reward != -20
