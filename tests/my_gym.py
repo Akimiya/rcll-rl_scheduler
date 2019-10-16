@@ -115,9 +115,12 @@ class DQNAgent:
         
         # input is the 4 elements long touple
         # , kernel_initializer='uniform'
-        model.add(Dense(30, activation='relu', input_shape=(19,)))
-        model.add(Dense(30, activation='relu'))
-#        model.add(Dense(10, activation='relu'))
+        model.add(Dense(50, activation='relu', input_shape=(19,)))
+        model.add(Dense(50, activation='relu'))
+        model.add(Dense(50, activation='relu'))
+        model.add(Dense(50, activation='relu'))
+        model.add(Dense(50, activation='relu'))
+        model.add(Dense(50, activation='relu'))
 
         # the output llayer, ACTION_SPACE_SIZE = how many choices (9)
         model.add(Dense(env.ACTION_SPACE_SIZE, activation='linear'))
@@ -207,9 +210,8 @@ if __name__ == "__main__":
     REPLAY_MEMORY_SIZE = 50000  # How many last steps to keep for model training
     MIN_REPLAY_MEMORY_SIZE = 1000  # Minimum number of steps in a memory to start training
     MINIBATCH_SIZE = 64  # How many steps (samples) to use for training
-    # TODO: try changing below
-    UPDATE_TARGET_EVERY = 20  # Terminal states (end of episodes)
-    MODEL_NAME = 'rcll_v8_limit-no-actions_norm'
+    UPDATE_TARGET_EVERY = 10  # Terminal states (end of episodes)
+    MODEL_NAME = 'rcll_v8_lim-no_norm_upd10_hl5-n50'
     MIN_REWARD = -5  # For model save, as -300 for when an enemy hit
     MEMORY_FRACTION = 0.20
     
@@ -227,7 +229,6 @@ if __name__ == "__main__":
     
     
     ### Environment setup
-#    env = BlobEnv()
     env = env_rcll(normalize=True)
 
     # For stats
