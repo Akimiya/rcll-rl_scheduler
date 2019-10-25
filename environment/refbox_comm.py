@@ -58,9 +58,10 @@ COMPONENTS = {
 
 NOT_NEED = ["RobotInfo",
             "VersionInfo",
-            "LogMessage",
+#            "LogMessage",
             "BeaconSignal",
-            "MachineReportInfo" # Not supported
+            "MachineReportInfo", # Not supported
+#            "GameState" # we are RUNNING and in PRODUCTION anyway
             ]
 
 def create_order(fill=False, amount=False, compet=False, window=False):
@@ -175,6 +176,8 @@ def communicator(debug_output=False, log_=False):
     global rings
     global s
     global running
+    global pb_obj
+    global game_time
     
     # create socket and build connection
     s = connect_socket(None, False)
@@ -182,7 +185,25 @@ def communicator(debug_output=False, log_=False):
     if log_:
         message_file = open("messages.log", "a")
     
+    # reset to default values
+    # TODO: has instructions field - do we need?
+    machines = {"CS1": deepcopy(MACHINE),
+                "CS2": deepcopy(MACHINE),
+                "RS1": deepcopy(MACHINE),
+                "RS2": deepcopy(MACHINE),
+                "SS": deepcopy(MACHINE),
+                "BS": deepcopy(MACHINE),
+                "DS": deepcopy(MACHINE)}
     last_machines = {}
+    last_orders = pb.OrderInfo_pb2.OrderInfo()
+    
+    rings = {1 : 0,
+             2 : 0,
+             3 : 0,
+             4 : 0}
+    last_rings = {}
+    
+    game_time = 0
     
     # manage unpacking messages
     data = b""
@@ -245,67 +266,79 @@ def communicator(debug_output=False, log_=False):
                 
                 ##### proccess incoming protobuff messages
                 if component not in NOT_NEED:
+                    # flag to write message to log file
+                    to_log = False
+                    
                     # create the protobuf object of the appropriate type
                     pb_obj_constructor = getattr(getattr(pb, component + "_pb2"), component)
                     pb_obj = pb_obj_constructor() # a new object
                     read = pb_obj.ParseFromString(message["protobuf_msg"])
                     assert read == message["payload_size"] - 4
                 
+                    
+                    # also filtering excessive messages, get 3 messages: 
+                    # 1) without state and ringcolors, 2) without ringcolors, 3) complete??
                     if component == "MachineInfo":
-                        # reset to default values
-                        # TODO: has instructions field - do we need?
-                        machines = {"CS1": deepcopy(MACHINE),
-                                    "CS2": deepcopy(MACHINE),
-                                    "RS1": deepcopy(MACHINE),
-                                    "RS2": deepcopy(MACHINE),
-                                    "SS": deepcopy(MACHINE),
-                                    "BS": deepcopy(MACHINE),
-                                    "DS": deepcopy(MACHINE)}
-                        
                         for m in pb_obj.machines:
                             # filter just one activve team; here CYAN
-                            if m.name[0] == "C":
+                            if m.name[0] == "C" and m.state != "": 
                                 mtype = m.name[2:] # string for type
-                                
+#                                print("THE STATE:", m.state, type(m.state), m.state == "IDLE", m.state != "IDLE")
                                 machines[mtype]["state"] = m.state
                                 machines[mtype]["loaded"] = m.loaded_with
                                 machines[mtype]["ring_colors"] = list(m.ring_colors)
                                 # process the lights
-                                for x in m.lights:
-                                    # 0 is OFF, 1 is ON, 2 is BLINK => MachineDescripton.proto
-                                    machines[mtype]["lights"][x.color] = x.state
-                        
+#                                for x in m.lights:
+#                                    # 0 is OFF, 1 is ON, 2 is BLINK => MachineDescripton.proto
+#                                    machines[mtype]["lights"][x.color] = x.state
+#                                if mtype == "RS1":
+#                                    assert machines[mtype]["ring_colors"] != []
+                            
                         outp = [[k, v] for k, v in machines.items() if k != "SS"] # just for debug
-                        if debug_output and last_machines != machines: # also just for debug...
-                            print("We got a <{}> message:\n{}\n{}\n{}".format(component, outp[:2], outp[2:4], outp[4:]))
-                        last_machines = deepcopy(machines)
+                        
+                        if last_machines != machines:
+                            to_log = True
+                            last_machines = deepcopy(machines)
+                            if debug_output:
+                                print("We got a <{}> message:\n{}\n{}\n{}".format(component, outp[:2], outp[2:4], outp[4:]))
                     
                     elif component == "OrderInfo":
                         orders = pb_obj.orders # we can work with given struct here as need all param
-                        if debug_output:
-                            print("We got a <{}> message:\n{}".format(component, pb_obj))
+                        
+                        if last_orders != orders:
+                            to_log = True
+                            last_orders = deepcopy(orders)
+                            if debug_output:
+                                print("We got a <{}> message:\n{}".format(component, pb_obj))
+                        
                     elif component == "GameState":
-                        if debug_output:
-                            print("We got a <{}> message:\nphase={}".format(component, pb_obj.phase))
+                        game_time = pb_obj.game_time.sec
+#                        if debug_output:
+#                            print("We got a <{}> message:\n{}\n{}".format(component, game_time, pb_obj))
+                            
                     elif component == "RingInfo":
                         # TODO: technically only need to know once
-                        rings = {1 : 0,
-                                 2 : 0,
-                                 3 : 0,
-                                 4 : 0}
                         for r in pb_obj.rings:
                             rings[r.ring_color] = r.raw_material
-                        if debug_output:
-                            print("We got a <{}> message:\n{}".format(component, rings))
+                        
+                        if last_rings != rings:
+                            to_log = True
+                            last_rings = deepcopy(rings)
+                            if debug_output:
+                                print("We got a <{}> message:\n{}".format(component, rings))
+                        
                     else:
                         print("We got a <{}> message:\n{}".format(component, pb_obj))
+                        to_log = True
                     
-                    if log_:
-                        message_file.write("----------------------------------------------------------\n{} - <{}>:\n{}".format(dt.datetime.now(), component, pb_obj))                
+                    if log_ and to_log:
+                        message_file.write("----------------------------------------------------------\n{} - <{}> - {:03d}:\n{}".format(dt.datetime.now(), component, game_time, pb_obj))
+                        message_file.flush()
         
                 # remove proccessed message from the buffer
                 data = data[pos:]
         except Exception as e:
+            running = False
             print("HAD EXCEPTION:\n{}".format(e))
             print(traceback.format_exc())
             raise e
@@ -429,13 +462,13 @@ if __name__ == "__main__":
                  "id_clear" : 4001}
     
     # start the thread handling current data
-    thr = threading.Thread(target=communicator, args=(False, False,))
+    thr = threading.Thread(target=communicator, args=(True, True,))
     thr.start()
     
     try:
         while True:
             time.sleep(5)
-            print(orders)
+#            print("MT orders:", orders)
     except KeyboardInterrupt:
         running = False
         s.close()
