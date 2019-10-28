@@ -11,20 +11,25 @@ from copy import deepcopy # more performant then dict()
 
 # TODO: need to make refbox_comm into a class or uglily import it to get running globals
 
-def create_order(fill=False, amount=False, compet=False, window=False):
+def create_order(C=-1, fill=False, amount=False, compet=False, window=-1):
     # enum bases red = 1, black, silver
     base = int(np.random.uniform(1, 4))
     
-    # number of rings (no information on distribution)
-    # TODO: add zero rings
-    rnd = np.random.uniform()
-    if rnd <= 0.33:
-        num_rings = 1
-    elif rnd <= 0.66:
-        num_rings = 2
-    elif rnd <= 1:
-        num_rings = 3
-    # enum rings blue = 1, green, oragne, yellow
+    # number of rings
+    if C == -1:
+        rnd = np.random.uniform()
+        if rnd <= 1 / 9:
+            num_rings = 3
+        elif rnd <= 2 / 9:
+            num_rings = 2
+        elif rnd <= 4 / 9:
+            num_rings = 1
+        elif rnd <= 1:
+            num_rings = 0
+            
+    elif C >= 0 and C <= 3:
+        num_rings = C
+    # enum rings blue = 1, green, oragne, yellow; cant have more then one of same ring
     rings = [int(np.random.uniform(1, 5)) for _ in range(num_rings)] + [0] * (3 - num_rings)
     
     # enum caps black = 1, grey
@@ -44,14 +49,14 @@ def create_order(fill=False, amount=False, compet=False, window=False):
         
     # the delivery window
     minimum_window = 120
-    if window == True:
-        start = int(np.random.uniform(1, 1021 - minimum_window))
+    if window >= 0:
+        start = int(np.random.uniform(window + 1, 1021 - minimum_window))
         end = int(np.random.uniform(start + minimum_window, 1021))
         delivery_window = [start, end]
     else:
         delivery_window = [0, 0] if fill else []
     
-    return [base] + rings + [cap] + num_products + competitive + delivery_window, num_rings
+    return [base] + rings + [cap] + num_products + competitive + delivery_window
 
 
 class env_rcll():
@@ -98,15 +103,43 @@ class env_rcll():
     
     # reset all parameters to an initial game state
     def reset(self):
-        # utility parameters
+        np.random.seed()
+        # utility parameters    
         self.episode_step = 0
         
-        self.num_orders = 3
+        # defining additional ring bases
+        # first needs 2 bases, 2nd one, 3rd and 4th zero
+        self.ring_additional_bases = [x for x in range(1, 5)]
+        np.random.shuffle(self.ring_additional_bases)
+        
+        # RefBox like behavoir; creating full matrix
+        self.orders = [[0] * 9] * 9
+        self.complexities = [-1] * 9
+        # id1 is C0 full window
+        self.orders[0] = create_order(C=0, fill=True)
+        self.orders[0][-1] = 1021
+        self.orders[0][-2] = 1
+        # id2 is C1 with a ring requiring additional base, full window
+        self.orders[1] = create_order(C=0, fill=True)
+        self.orders[1][1] = self.ring_additional_bases[int(np.random.uniform(0, 2))]
+        self.orders[1][-1] = 1021
+        self.orders[1][-2] = 1
+        # id4 is C3, later window around 600
+        self.orders[3] = create_order(C=3, fill=True, window=600)
+        
+        
+        for _ in range(self.num_orders):
+            order = create_order()
+            complexity = 3 - order[1:4].count(0)
+            self.orders.append(order)
+            self.complexities.append(complexity)
+        
         # main features
         self.orders = []
         self.complexities = []
         for _ in range(self.num_orders):
-            order, complexity = create_order()
+            order = create_order()
+            complexity = 3 - order[1:4].count(0)
             self.orders.append(order)
             self.complexities.append(complexity)
         self.order_stage = 0 # track what assembly step we are at

@@ -307,8 +307,8 @@ if __name__ == "__main__":
                 elif phase == 2:
                     action = np.random.randint(3, 9) # currently includes more then needed, but no discard
 #                    doing = env.doing_order[0]
-#                    has_rings = env.orders[doing][1:4].count(0)
-#                    done_rings = env.pipeline[1:4].count(0)
+#                    has_rings = 3 - env.orders[doing][1:4].count(0)
+#                    done_rings = 3 - env.pipeline[1:4].count(0)
 #                    if has_rings < done_rings:
 #                        # if still missing some rings
 #                        action = np.random.randint(3, 7)
