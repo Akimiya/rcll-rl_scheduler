@@ -30,7 +30,9 @@ def create_order(C=-1, fill=False, amount=False, compet=False, window=-1):
     elif C >= 0 and C <= 3:
         num_rings = C
     # enum rings blue = 1, green, oragne, yellow; cant have more then one of same ring
-    rings = [int(np.random.uniform(1, 5)) for _ in range(num_rings)] + [0] * (3 - num_rings)
+    ring_options = [x for x in range(1,5)]
+    np.random.shuffle(ring_options)        
+    rings = ring_options[:num_rings] + [0] * (3 - num_rings)
     
     # enum caps black = 1, grey
     cap = int(np.random.uniform(1, 3))
@@ -69,6 +71,7 @@ class env_rcll():
         self.FINISHED_ORDER = 20
         
         self.ACTION_SPACE_SIZE = 3 + 4 + 2 + 1
+        self.TOTAL_NUM_ORDERS = 9
         
         # there are 3 rings, so 4 repeats
         self.ORDER_NORM_FACTOR = [3, 4, 4, 4, 2, 1, 1, 1020]
@@ -76,8 +79,46 @@ class env_rcll():
         self.normalize = normalize
     
     def get_observation(self):
-        # as shape does not matter, we stack a vector for now
-        # these are all orders and the pipeline in one
+        # compute all the expectation values
+        
+        # expected reward
+        E_rewards = []
+        for idx, order in enumerate(self.orders):
+            # no reward for getting a base
+            E_reward = 0
+            
+            # depending on cap color => CC, for all 3 rings:
+            for i in range(3):
+                if order[1 + i] == self.ring_additional_bases[0]: # 2 bases
+                    E_reward += 20
+                    # additional points for base feeded into RS
+                    E_reward += 4
+                elif order[1 + i] == self.ring_additional_bases[1]: # 1 bases
+                    E_reward += 10
+                    # additional points for base feeded into RS
+                    E_reward += 2
+                elif order[1 + i] != 0: # 0 bases
+                    E_reward += 5
+            
+            # depending on number of rings => C
+            num_rings = 3 - order[1:4].count(0)
+            if num_rings == 1:
+                E_reward += 10
+            elif num_rings == 2:
+                E_reward += 30
+            elif num_rings == 3:
+                E_reward += 80
+                
+            # buffering and mounting the cap
+            E_reward += 2 + 10
+            
+            # comsidering delivery window
+            # TODO: need the expected time for it
+            
+            E_rewards.append(E_reward)
+        
+        
+        
         
         # normalize output
         if self.normalize:
@@ -104,8 +145,11 @@ class env_rcll():
     # reset all parameters to an initial game state
     def reset(self):
         np.random.seed()
-        # utility parameters    
+        # utility parameters
         self.episode_step = 0
+        
+        # current time
+        self.time = 0
         
         # defining additional ring bases
         # first needs 2 bases, 2nd one, 3rd and 4th zero
@@ -113,8 +157,7 @@ class env_rcll():
         np.random.shuffle(self.ring_additional_bases)
         
         # RefBox like behavoir; creating full matrix
-        self.orders = [[0] * 9] * 9
-        self.complexities = [-1] * 9
+        self.orders = [[0] * 9] * self.TOTAL_NUM_ORDERS
         # id1 is C0 full window
         self.orders[0] = create_order(C=0, fill=True)
         self.orders[0][-1] = 1021
@@ -124,28 +167,10 @@ class env_rcll():
         self.orders[1][1] = self.ring_additional_bases[int(np.random.uniform(0, 2))]
         self.orders[1][-1] = 1021
         self.orders[1][-2] = 1
-        # id4 is C3, later window around 600
+        # id4 is C3, window around 600+
         self.orders[3] = create_order(C=3, fill=True, window=600)
         
-        
-        for _ in range(self.num_orders):
-            order = create_order()
-            complexity = 3 - order[1:4].count(0)
-            self.orders.append(order)
-            self.complexities.append(complexity)
-        
-        # main features
-        self.orders = []
-        self.complexities = []
-        for _ in range(self.num_orders):
-            order = create_order()
-            complexity = 3 - order[1:4].count(0)
-            self.orders.append(order)
-            self.complexities.append(complexity)
-        self.order_stage = 0 # track what assembly step we are at
-        self.pipeline = [0] * 4
-        self.pipeline_cap = 0 # track cap seperately for each pipeline as not needed in state
-        self.doing_order = []
+        self.order_stage = [0] * self.TOTAL_NUM_ORDERS # track what assembly step we are at
         
         return self.get_observation()
 
