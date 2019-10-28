@@ -332,7 +332,7 @@ def communicator(debug_output=False, log_=False):
                         to_log = True
                     
                     if log_ and to_log:
-                        message_file.write("----------------------------------------------------------\n{} - <{}> - {:03d}:\n{}".format(dt.datetime.now(), component, game_time, pb_obj))
+                        message_file.write("----------------------------------------------------------\n{} - <{}> - {:04d}:\n{}".format(dt.datetime.now(), component, game_time, pb_obj))
                         message_file.flush()
         
                 # remove proccessed message from the buffer
