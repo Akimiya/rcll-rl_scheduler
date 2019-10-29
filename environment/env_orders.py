@@ -60,6 +60,20 @@ def create_order(C=-1, fill=False, amount=False, compet=False, window=-1):
     
     return [base] + rings + [cap] + num_products + competitive + delivery_window
 
+class field_pos():
+    def __init__(self, x, y, obj=None):
+        self.x = x
+        self.y = y
+        self.obj = obj
+    
+    def __repr__(self):
+        return "{}({}, {})".format(self.obj + ": " if self.obj else "", self.x, self.y)
+    
+    def __eq__(self, other):
+        return (self.x, self.y) == other
+
+    def __ne__(self, other):
+        return not(self.__eq__(other))
 
 class env_rcll():
     def __init__(self, normalize=False):
@@ -153,30 +167,32 @@ class env_rcll():
         # utility parameters
         self.episode_step = 0
         
+        # current roboter position
+        self.robots = [field_pos(4.5, 0.5), field_pos(5.5, 0.5), field_pos(6.5, 0.5)]
+        
         # field generation (currently no respect on blocking and rotation)
         # can be placed on full 7x8 grid with exception of 51 61 71 52
-        machines = {"CS1": None, "CS2": None, "RS1": None, "RS2": None, "SS": None, "BS": None, "DS": None}
-        for machine in machines:
+        self.machines = {"CS1": None, "CS2": None, "RS1": None, "RS2": None, "SS": None, "BS": None, "DS": None}
+        for machine in self.machines:
             # filter impossible and overlapping positions
             while True:
                 x_pos = int(np.random.uniform(0, 7)) + 0.5
                 y_pos = int(np.random.uniform(0, 8)) + 0.5
+                pos = field_pos(x_pos, y_pos)
                 
-                if (x_pos, y_pos) not in [(4.5, 0.5), (5.5, 0.5), (6.5, 0.5), (4.5, 1.5)] \
-                and (x_pos, y_pos) not in machines.values():
+                if pos not in self.robots and pos != (4.5, 1.5) and pos not in self.machines.values():
                     break
-            
-            machines[machine] = (x_pos, y_pos)
+            self.machines[machine] = pos
         
         # swap/flip ONE random CS and ONE random RS to the other side
         if int(np.random.uniform(0, 2)):
-            machines["RS1"] = (- machines["RS1"][0], machines["RS1"][1])
+            self.machines["RS1"].x *= -1
         else:
-            machines["RS2"] = (- machines["RS2"][0], machines["RS2"][1])
+            self.machines["RS2"].y *= -1
         if int(np.random.uniform(0, 2)):
-            machines["CS1"] = (- machines["CS1"][0], machines["CS1"][1])
+            self.machines["CS1"].x *= -1
         else:
-            machines["CS2"] = (- machines["CS2"][0], machines["CS2"][1])
+            self.machines["CS2"].y *= -1
         
         # current time
         self.time = 0
@@ -201,8 +217,6 @@ class env_rcll():
         self.orders[3] = create_order(C=3, fill=True, window=600)
         
         self.order_stage = [0] * self.TOTAL_NUM_ORDERS # track what assembly step we are at
-        
-        
         
         return self.get_observation()
 
