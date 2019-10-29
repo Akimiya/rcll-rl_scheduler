@@ -61,19 +61,29 @@ def create_order(C=-1, fill=False, amount=False, compet=False, window=-1):
     return [base] + rings + [cap] + num_products + competitive + delivery_window
 
 class field_pos():
-    def __init__(self, x, y, obj=None):
+    def __init__(self, x, y):
         self.x = x
         self.y = y
-        self.obj = obj
     
     def __repr__(self):
-        return "{}({}, {})".format(self.obj + ": " if self.obj else "", self.x, self.y)
+        return "({}, {})".format(self.x, self.y)
     
     def __eq__(self, other):
         return (self.x, self.y) == other
 
     def __ne__(self, other):
         return not(self.__eq__(other))
+    
+    def __sub__(self, other):
+        return field_pos(self.x - other.x, self.y - other.y)
+    
+    def __add__(self, other):
+        return field_pos(self.x + other.x, self.y + other.y)
+    
+    def distance(self, other):
+        tmp = self - other
+        return np.sqrt(tmp.x**2 + tmp.y**2)
+        
 
 class env_rcll():
     def __init__(self, normalize=False):
@@ -95,11 +105,19 @@ class env_rcll():
     def get_observation(self):
         # compute all the expectation values
         
+        # self.order_stages:
+        # "BS" "R1" "R2" "R3" "CS" "DS"
+        
         # expected time and reward
         E_rewards = []
         for idx, order in enumerate(self.orders):
-            ### TIME
+            if order[0] == 0:
+                E_rewards.append(0)
+                continue
             
+            ### TIME
+            # TODO: depending on state of product
+            self.robots[0].distance(self.machines["BS"])
             
             
             ### REWARD
@@ -166,10 +184,12 @@ class env_rcll():
         np.random.seed()
         # utility parameters
         self.episode_step = 0
-        
+
+
         # current roboter position
         self.robots = [field_pos(4.5, 0.5), field_pos(5.5, 0.5), field_pos(6.5, 0.5)]
-        
+
+
         # field generation (currently no respect on blocking and rotation)
         # can be placed on full 7x8 grid with exception of 51 61 71 52
         self.machines = {"CS1": None, "CS2": None, "RS1": None, "RS2": None, "SS": None, "BS": None, "DS": None}
@@ -193,16 +213,29 @@ class env_rcll():
             self.machines["CS1"].x *= -1
         else:
             self.machines["CS2"].y *= -1
+
+
+        # assign the rings to RS1 and RS2 respectively, each getting one complicated
+        self.rings = [[0, 0], [0, 0]]
+        rnd = int(np.random.uniform(0, 2))
+        self.rings[0][0] = self.ring_additional_bases[rnd]
+        self.rings[1][0] = self.ring_additional_bases[1 - rnd]
+        rnd = int(np.random.uniform(0, 2))
+        self.rings[0][1] = self.ring_additional_bases[2 + rnd]
+        self.rings[1][1] = self.ring_additional_bases[2 + 1 - rnd]
+        
         
         # current time
         self.time = 0
-        
+
+
         # defining additional ring bases
         # first needs 2 bases, 2nd one, 3rd and 4th zero
         self.ring_additional_bases = [x for x in range(1, 5)]
         np.random.shuffle(self.ring_additional_bases)
-        
-        # RefBox like behavoir; creating full matrix
+
+
+        # RefBox like behavoir (=distribution); creating full matrix
         self.orders = [[0] * 9] * self.TOTAL_NUM_ORDERS
         # id1 is C0 full window
         self.orders[0] = create_order(C=0, fill=True)
@@ -216,8 +249,10 @@ class env_rcll():
         # id4 is C3, window around 600+
         self.orders[3] = create_order(C=3, fill=True, window=600)
         
-        self.order_stage = [0] * self.TOTAL_NUM_ORDERS # track what assembly step we are at
-        
+        # track what assembly step we are at
+        self.order_stage = ["BS"] * self.TOTAL_NUM_ORDERS
+
+
         return self.get_observation()
 
     def step(self, action):
