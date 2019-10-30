@@ -11,6 +11,17 @@ from copy import deepcopy # more performant then dict()
 
 # TODO: need to make refbox_comm into a class or uglily import it to get running globals
 
+#### for debug scenario
+#self.orders = [[1, 0, 0, 0, 2, 0, 0, 1, 1021], # @ 0006
+#               [2, 3, 0, 0, 2, 0, 0, 1, 1021], # @ 0006
+#               [0, 0, 0, 0, 0, 0, 0, 0, 0],
+#               [1, 1, 3, 4, 2, 0, 0, 678, 834], # @ 0006
+#               [0, 0, 0, 0, 0, 0, 0, 0, 0],
+#               [0, 0, 0, 0, 0, 0, 0, 0, 0],
+#               [0, 0, 0, 0, 0, 0, 0, 0, 0],
+#               [3, 2, 0, 0, 2, 0, 0, 710, 817], # @ 0209
+#               [0, 0, 0, 0, 0, 0, 0, 0, 0]]
+
 def create_order(C=-1, fill=False, amount=False, compet=False, window=-1):
     # enum bases red = 1, black, silver
     base = int(np.random.uniform(1, 4))
@@ -98,7 +109,7 @@ class env_rcll():
         self.TOTAL_NUM_ORDERS = 9
         
         # there are 3 rings, so 4 repeats
-        self.ORDER_NORM_FACTOR = [3, 4, 4, 4, 2, 1, 1, 1020]
+        self.ORDER_NORM_FACTOR = [3, 4, 4, 4, 2, 1, 1, 1021, 1021]
         
         # order of steps needed to fulfill an oder
         self.processing_order = ["BS", "R1", "R2", "R3", "CS", "DS"]
@@ -118,15 +129,16 @@ class env_rcll():
                 E_times.append(0)
                 continue
             
-            ### TIME
+            ############################## TIME ##############################
+            
             to_travel = 0 # distance
+            to_wait = 0 # based on machine processing time
             # we start in the order processing pipeline from the step it currently is in
             current = self.processing_order.index(self.order_stage[idx])
             at = self.robots[0] # TODO: how do for multiple robots? search closest free robot?
-            
-            for stage in range(current, len(self.processing_order)):
+            ##### track machine path
+            for to_machine in self.processing_order[current:]:
                 # decide which RS
-                to_machine = self.processing_order[stage]
                 if to_machine[0] == 'R':
                     # find which ring
                     ring_pos = int(to_machine[1])
@@ -138,31 +150,62 @@ class env_rcll():
                     
                     # figure out where we can get it
                     if ring_col in self.rings[0]:
-                        to = self.machines["RS1"]
+                        to_machine = "RS1"
                     elif ring_col in self.rings[1]:
-                        to = self.machines["RS2"]
+                        to_machine = "RS2"
+                    
+                    ### consider additional bases
+                    # TODO: consider multiple robots
+                    
+                    # figure out if current ring need additional bases
+                    if ring_col == self.ring_additional_bases[0]: # 2 bases
+                        need_bases = 2
+                    elif ring_col == self.ring_additional_bases[1]: # 1 bases
+                        need_bases = 1
+                    else:
+                        need_bases = 0
+                    
+                    # check if need gather additional bases; need minus have
+                    missing_bases = need_bases - self.rings_buf_bases[int(to_machine[2]) - 1]
+                    if missing_bases >= 1:
+                        # we are right before driving to RS and will still account this step
+                        # we condsider an additional back and forth to a BS from next RS *per* missing base
+                        extra = self.machines[to_machine].distance(self.machines["BS"]) * 2
+                        to_travel += extra * missing_bases
                         
                 elif to_machine == "CS":
                     cap_col = order[4]
                     if cap_col == 2:
-                        to = self.machines["CS1"]
+                        to_machine = "CS1"
                     elif cap_col == 1:
-                        to = self.machines["CS2"]
-                        
-                else:
-                    to = self.machines[to_machine]
+                        to_machine = "CS2"
                 
-#                print("{} at: {}, to: {}, distance: {}".format(stage, at, to, at.distance(to)))
+                # get specific machine position now
+                to = self.machines[to_machine]
+                
+#                print("at: {}, to: {}, distance: {}".format(at, to, at.distance(to)))
                 # accumulate the distance
                 to_travel += at.distance(to)
                 at = to
+                
+                # additional wait time per machine
+                if to_machine == "BS":
+                    to_wait += 5 # estimate
+                elif to_machine[0] == 'R':
+                    to_wait += 50
+                elif to_machine == "CS":
+                    to_wait += 20
+                elif to_machine == "DS":
+                    to_wait += 30
+                elif to_machine == "SS":
+                    to_wait += 10 # estimate
             
             # assume 1m per 2s
-            E_time = to_travel * 2
+            E_time = to_travel * 2 + to_wait
             E_times.append(E_time)
             
             
-            ### REWARD
+            ############################ REWARD #############################
             # no reward for getting a base
             E_reward = 0
             
@@ -265,6 +308,8 @@ class env_rcll():
         rnd = int(np.random.uniform(0, 2))
         self.rings[0][1] = self.ring_additional_bases[2 + rnd]
         self.rings[1][1] = self.ring_additional_bases[2 + 1 - rnd]
+        # track how many bases a ring station has buffered
+        self.rings_buf_bases = [0, 0]
         
         
         # current time
