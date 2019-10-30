@@ -100,24 +100,66 @@ class env_rcll():
         # there are 3 rings, so 4 repeats
         self.ORDER_NORM_FACTOR = [3, 4, 4, 4, 2, 1, 1, 1020]
         
+        # order of steps needed to fulfill an oder
+        self.processing_order = ["BS", "R1", "R2", "R3", "CS", "DS"]
+        
         self.normalize = normalize
     
     def get_observation(self):
         # compute all the expectation values
         
-        # self.order_stages:
-        # "BS" "R1" "R2" "R3" "CS" "DS"
-        
         # expected time and reward
         E_rewards = []
+        E_times = []
         for idx, order in enumerate(self.orders):
+            # have no order here yet
             if order[0] == 0:
                 E_rewards.append(0)
+                E_times.append(0)
                 continue
             
             ### TIME
-            # TODO: depending on state of product
-            self.robots[0].distance(self.machines["BS"])
+            to_travel = 0 # distance
+            # we start in the order processing pipeline from the step it currently is in
+            current = self.processing_order.index(self.order_stage[idx])
+            at = self.robots[0] # TODO: how do for multiple robots? search closest free robot?
+            
+            for stage in range(current, len(self.processing_order)):
+                # decide which RS
+                to_machine = self.processing_order[stage]
+                if to_machine[0] == 'R':
+                    # find which ring
+                    ring_pos = int(to_machine[1])
+                    ring_col = order[ring_pos]
+                    
+                    # check if it has ring on this slot
+                    if ring_col == 0:
+                        continue
+                    
+                    # figure out where we can get it
+                    if ring_col in self.rings[0]:
+                        to = self.machines["RS1"]
+                    elif ring_col in self.rings[1]:
+                        to = self.machines["RS2"]
+                        
+                elif to_machine == "CS":
+                    cap_col = order[4]
+                    if cap_col == 2:
+                        to = self.machines["CS1"]
+                    elif cap_col == 1:
+                        to = self.machines["CS2"]
+                        
+                else:
+                    to = self.machines[to_machine]
+                
+#                print("{} at: {}, to: {}, distance: {}".format(stage, at, to, at.distance(to)))
+                # accumulate the distance
+                to_travel += at.distance(to)
+                at = to
+            
+            # assume 1m per 2s
+            E_time = to_travel * 2
+            E_times.append(E_time)
             
             
             ### REWARD
