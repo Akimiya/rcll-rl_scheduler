@@ -114,6 +114,12 @@ class env_rcll():
         # order of steps needed to fulfill an oder
         self.processing_order = ["BS", "R1", "R2", "R3", "CS", "DS"]
         
+        # additional time factor for time lost on grapping products with machine arm
+        # 2017 Carologistics needs 68sec for adjusting grapping and plaing on CS
+        # they need 45sec for grap, move and place products (10~30sec move and adjust)
+        self.grap_and_place_time = 20
+        
+        # TODO: return normalized parameters
         self.normalize = normalize
     
     def get_observation(self):
@@ -133,11 +139,18 @@ class env_rcll():
             
             to_travel = 0 # distance
             to_wait = 0 # based on machine processing time
+            
+            # account for partial processed products => in step() (update self.order_stage for all)
             # we start in the order processing pipeline from the step it currently is in
             current = self.processing_order.index(self.order_stage[idx])
-            at = self.robots[0] # TODO: how do for multiple robots? search closest free robot?
+            
+            # TODO: consider multiple robots (need outside self-loop with robot selection). search closest free robot?
+            # robots are reasonably fast that pathing, thus which robot, is a more minor problem
+            at = self.robots[0]
+            
             ##### track machine path
             for to_machine in self.processing_order[current:]:
+                
                 # decide which RS
                 if to_machine[0] == 'R':
                     # find which ring
@@ -155,8 +168,6 @@ class env_rcll():
                         to_machine = "RS2"
                     
                     ### consider additional bases
-                    # TODO: consider multiple robots
-                    
                     # figure out if current ring need additional bases
                     if ring_col == self.ring_additional_bases[0]: # 2 bases
                         need_bases = 2
@@ -170,9 +181,11 @@ class env_rcll():
                     if missing_bases >= 1:
                         # we are right before driving to RS and will still account this step
                         # we condsider an additional back and forth to a BS from next RS *per* missing base
-                        extra = self.machines[to_machine].distance(self.machines["BS"]) * 2
+                        extra = self.machines[to_machine].distance(self.machines["BS"]) * 2 # 2 for back-forth
                         to_travel += extra * missing_bases
+                        to_wait += self.grap_and_place_time * missing_bases # assumption on lost time grapping bases
                         
+                # decide which CS
                 elif to_machine == "CS":
                     cap_col = order[4]
                     if cap_col == 2:
@@ -188,17 +201,29 @@ class env_rcll():
                 to_travel += at.distance(to)
                 at = to
                 
-                # additional wait time per machine
+                # additional wait time per machine; assumed after we arrive and do process there
                 if to_machine == "BS":
                     to_wait += 5 # estimate
                 elif to_machine[0] == 'R':
                     to_wait += 50
                 elif to_machine == "CS":
-                    to_wait += 20
+                    to_wait += 20 # mount cap
+                    # additional time to buffer
+                    to_wait += 20 # for buffer cap first
+                    to_wait += 3 * 2 # traveling around the machine
+                    # dispose to nearest RS for now
+                    # TODO: optimize use; depending wheter we still can reuse those
+                    distance_rs1 = self.machines[to_machine].distance(self.machines["RS1"])
+                    distance_rs2 = self.machines[to_machine].distance(self.machines["RS2"])
+                    to_wait += min(distance_rs1, distance_rs2) * 2 # 2 for back-forth
+                    to_wait += self.grap_and_place_time # assumption on lost time grapping clear bases
                 elif to_machine == "DS":
                     to_wait += 30
                 elif to_machine == "SS":
                     to_wait += 10 # estimate
+                
+                # assume each step involves grappign and plaing a product at least once
+                to_wait += self.grap_and_place_time
             
             # assume 1m per 2s
             E_time = to_travel * 2 + to_wait
@@ -206,6 +231,7 @@ class env_rcll():
             
             
             ############################ REWARD #############################
+            
             # no reward for getting a base
             E_reward = 0
             
@@ -367,6 +393,7 @@ class env_rcll():
         elif action >= 0:
             action = 10 + action + 1
             
+        # TODO: make products appear randomly on time for specified order slots; account quantity & characteristics
         
         ##### UPDATING PRODUCT
         # format is a  two digit integer, first the category, second the color
