@@ -139,10 +139,8 @@ class env_rcll():
                 E_times_next.append(0)
                 continue
             
-            ############################## TIME ##############################
-            
-            to_travel = 0 # distance
-            to_wait = 0 # based on machine processing time
+            ##### time related parameters
+            E_time = 0
             
             # account for partial processed products => in step() (update self.order_stage for all)
             # we start in the order processing pipeline from the step it currently is in
@@ -152,9 +150,17 @@ class env_rcll():
             # robots are reasonably fast that pathing, thus which robot, is a more minor problem
             at = self.robots[0]
             
+            ##### reward related parameters
+            E_reward = 0
+            
             ##### track machine path, looping over future machines
             for to_machine in self.processing_order[current:]:
                 
+                distance = 0 # the traveled/movement distance 
+                wait = 0 # machine processing time + arm-movement delay
+                reward = 0 # reward for that step
+                
+                ##### correct processing_order to actual next machine
                 # decide which RS
                 if to_machine[0] == 'R':
                     # find which ring
@@ -186,8 +192,9 @@ class env_rcll():
                         # we are right before driving to RS and will still account this step
                         # we condsider an additional back and forth to a BS from next RS *per* missing base
                         extra = self.machines[to_machine].distance(self.machines["BS"]) * 2 # 2 for back-forth
-                        to_travel += extra * missing_bases
-                        to_wait += self.grap_and_place_time * missing_bases # assumption on lost time grapping bases
+                        
+                        distance += extra * missing_bases
+                        wait += self.grap_and_place_time * missing_bases # assumption on lost time grapping bases
                         
                 # decide which CS
                 elif to_machine == "CS":
@@ -197,95 +204,94 @@ class env_rcll():
                     elif cap_col == 1:
                         to_machine = "CS2"
                 
-                # get specific machine position now
+                # get specific machine position and compute travling distance
                 to = self.machines[to_machine]
-                
 #                print("at: {}, to: {}, distance: {}".format(at, to, at.distance(to)))
-                # accumulate the distance
-                to_travel += at.distance(to)
+                distance += at.distance(to)
                 at = to
                 
                 # additional wait time per machine; assumed after we arrive and do process there
                 if to_machine == "BS":
-                    to_wait += 5 # estimate
+                    wait += 5 # estimate
                 elif to_machine[0] == 'R':
-                    to_wait += 50
+                    wait += 50
                 elif to_machine == "CS":
-                    to_wait += 20 # mount cap
+                    wait += 20 # mount cap
                     # additional time to buffer
-                    to_wait += 20 # for buffer cap first
-                    to_wait += 3 * 2 # traveling around the machine
+                    wait += 20 # for buffer cap first
+                    wait += 3 * 2 # traveling around the machine
                     # dispose to nearest RS for now
                     # TODO: optimize use; depending wheter we still can reuse those
                     distance_rs1 = self.machines[to_machine].distance(self.machines["RS1"])
                     distance_rs2 = self.machines[to_machine].distance(self.machines["RS2"])
-                    to_wait += min(distance_rs1, distance_rs2) * 2 # 2 for back-forth
-                    to_wait += self.grap_and_place_time # assumption on lost time grapping clear bases
+                    wait += min(distance_rs1, distance_rs2) * 2 # 2 for back-forth
+                    wait += self.grap_and_place_time # assumption on lost time grapping clear bases
                 elif to_machine == "DS":
-                    to_wait += 30
+                    wait += 30
                 elif to_machine == "SS":
-                    to_wait += 10 # estimate
+                    wait += 10 # estimate
                 
                 # assume each step involves grappign and plaing a product at least once
-                to_wait += self.grap_and_place_time
+                wait += self.grap_and_place_time
+                
+                # assume 1m per 2s
+                E_time += distance * 2 + wait
                 
                 # save the step to next machine
                 if E_times_next[idx] == None:
                     print("ONCE TIME!!")
-                    E_times_next[idx] = to_travel * 2 + to_wait
-            
-            # assume 1m per 2s
-            E_time = to_travel * 2 + to_wait
-            
-            E_times.append(E_time)
+                    E_times_next[idx] = E_time
             
             
-            ############################ REWARD #############################
-            
-            # TODO: MAJOR ERROR => need only FUTURE expected reward and not total..
-            
-            # no reward for getting a base; starting value
-            E_reward = 0
-            
-            # depending on ring color => CC, for all 3 rings:
-            for i in range(3):
-                if order[1 + i] == self.ring_additional_bases[0]: # 2 bases
-                    E_reward += 20
-                    # additional points for base feeded into RS
-                    E_reward += 4
-                elif order[1 + i] == self.ring_additional_bases[1]: # 1 bases
-                    E_reward += 10
-                    # additional points for base feeded into RS
-                    E_reward += 2
-                elif order[1 + i] != 0: # 0 bases
-                    E_reward += 5
-            
-            # depending on number of rings => C
-            num_rings = 3 - order[1:4].count(0)
-            if num_rings == 1:
-                E_reward += 10
-            elif num_rings == 2:
-                E_reward += 30
-            elif num_rings == 3:
-                E_reward += 80
+                ########################### REWARD ############################
                 
-            # buffering and mounting the cap
-            E_reward += 2 + 10
+                # TODO: MAJOR ERROR => need only FUTURE expected reward and not total..
+                
+                # no reward for getting a base; starting value
+                E_reward = 0
+                
+                # depending on ring color => CC, for all 3 rings:
+                for i in range(3):
+                    if order[1 + i] == self.ring_additional_bases[0]: # 2 bases
+                        E_reward += 20
+                        # additional points for base feeded into RS
+                        E_reward += 4
+                    elif order[1 + i] == self.ring_additional_bases[1]: # 1 bases
+                        E_reward += 10
+                        # additional points for base feeded into RS
+                        E_reward += 2
+                    elif order[1 + i] != 0: # 0 bases
+                        E_reward += 5
+                
+                # depending on number of rings => C
+                num_rings = 3 - order[1:4].count(0)
+                if num_rings == 1:
+                    E_reward += 10
+                elif num_rings == 2:
+                    E_reward += 30
+                elif num_rings == 3:
+                    E_reward += 80
+                    
+                # buffering and mounting the cap
+                E_reward += 2 + 10
+                
+                # comsidering delivery window
+                E_delivery = self.time + E_time
+                if E_delivery < order[-2]:
+                    E_reward += 1 # wrong delivery
+                elif E_delivery < order[-1]:
+                    E_reward += 20 # (correct) delivery
+                elif E_delivery < order[-1] + 10:
+                    tmp = 15 - (E_delivery - order[-1]) * 1.5 + 5
+                    assert tmp >= 5 and tmp <= 20
+                    E_reward += tmp # delayed delivery
+                else:
+                    E_reward += 5 # late delivery
             
-            # comsidering delivery window
-            E_delivery = self.time + E_time
-            if E_delivery < order[-2]:
-                E_reward += 1 # wrong delivery
-            elif E_delivery < order[-1]:
-                E_reward += 20 # (correct) delivery
-            elif E_delivery < order[-1] + 10:
-                tmp = 15 - (E_delivery - order[-1]) * 1.5 + 5
-                assert tmp >= 5 and tmp <= 20
-                E_reward += tmp # delayed delivery
-            else:
-                E_reward += 5 # late delivery
             
             
+            ##### for each order we add to vector
+            E_times.append(E_time)
             E_rewards.append(E_reward)
         
         
