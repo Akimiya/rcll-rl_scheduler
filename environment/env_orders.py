@@ -123,16 +123,20 @@ class env_rcll():
         self.normalize = normalize
     
     def get_observation(self):
-        # compute all the expectation values
         
         # expected time and reward
-        E_rewards = []
-        E_times = []
+        E_rewards = [] # accumulated for full order
+        E_times = [] # accumulated for full order
+        E_rewards_next = [None] * len(self.orders) # next step
+        E_times_next = [None] * len(self.orders) # next step
+        
         for idx, order in enumerate(self.orders):
             # have no order here yet
             if order[0] == 0:
                 E_rewards.append(0)
                 E_times.append(0)
+                E_rewards_next.append(0)
+                E_times_next.append(0)
                 continue
             
             ############################## TIME ##############################
@@ -148,7 +152,7 @@ class env_rcll():
             # robots are reasonably fast that pathing, thus which robot, is a more minor problem
             at = self.robots[0]
             
-            ##### track machine path
+            ##### track machine path, looping over future machines
             for to_machine in self.processing_order[current:]:
                 
                 # decide which RS
@@ -224,18 +228,26 @@ class env_rcll():
                 
                 # assume each step involves grappign and plaing a product at least once
                 to_wait += self.grap_and_place_time
+                
+                # save the step to next machine
+                if E_times_next[idx] == None:
+                    print("ONCE TIME!!")
+                    E_times_next[idx] = to_travel * 2 + to_wait
             
             # assume 1m per 2s
             E_time = to_travel * 2 + to_wait
+            
             E_times.append(E_time)
             
             
             ############################ REWARD #############################
             
-            # no reward for getting a base
+            # TODO: MAJOR ERROR => need only FUTURE expected reward and not total..
+            
+            # no reward for getting a base; starting value
             E_reward = 0
             
-            # depending on cap color => CC, for all 3 rings:
+            # depending on ring color => CC, for all 3 rings:
             for i in range(3):
                 if order[1 + i] == self.ring_additional_bases[0]: # 2 bases
                     E_reward += 20
@@ -277,7 +289,11 @@ class env_rcll():
             E_rewards.append(E_reward)
         
         
+        # formulate all in a matrix
         
+        
+        observation = [E_rewards] + [E_times]
+        np.array(observation)
         
         # normalize output
         if self.normalize:
