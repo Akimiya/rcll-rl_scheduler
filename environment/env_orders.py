@@ -235,7 +235,18 @@ class env_rcll():
             E_reward += 2 + 10
             
             # comsidering delivery window
-            # TODO: need the expected time for it
+            E_delivery = self.time + E_time
+            if E_delivery < order[-2]:
+                E_reward += 1 # wrong delivery
+            elif E_delivery < order[-1]:
+                E_reward += 20 # (correct) delivery
+            elif E_delivery < order[-1] + 10:
+                tmp = 15 - (E_delivery - order[-1]) * 1.5 + 5
+                assert tmp >= 5 and tmp <= 20
+                E_reward += tmp # delayed delivery
+            else:
+                E_reward += 5 # late delivery
+            
             
             E_rewards.append(E_reward)
         
@@ -313,7 +324,7 @@ class env_rcll():
         
         
         # current time
-        self.time = 0
+        self.time = 1 # as delivery windows are offset by 1 sec we start at 1sec
 
 
         # defining additional ring bases
