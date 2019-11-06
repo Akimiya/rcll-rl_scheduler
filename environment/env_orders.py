@@ -117,7 +117,7 @@ class env_rcll():
         # additional time factor for time lost on grapping products with machine arm
         # 2017 Carologistics needs 68sec for adjusting grapping and plaing on CS
         # they need 45sec for grap, move and place products (10~30sec move and adjust)
-        self.grap_and_place_time = 20
+        self.grap_and_place_delay = 20
         
         # TODO: return normalized parameters
         self.normalize = normalize
@@ -139,7 +139,7 @@ class env_rcll():
                 E_times_next.append(0)
                 continue
             
-            ##### time related parameters
+            ### time related parameters
             E_time = 0
             
             # account for partial processed products => in step() (update self.order_stage for all)
@@ -148,13 +148,13 @@ class env_rcll():
             
             # TODO: consider multiple robots (need outside self-loop with robot selection). search closest free robot?
             # robots are reasonably fast that pathing, thus which robot, is a more minor problem
-            at = self.robots[0]
+            current_pos = self.robots[0]
             
-            ##### reward related parameters
+            ### reward related parameters
             E_reward = 0
             
             ##### track machine path, looping over future machines
-            for to_machine in self.processing_order[current:]:
+            for stage in self.processing_order[current:]:
                 
                 distance = 0 # the traveled/movement distance 
                 wait = 0 # machine processing time + arm-movement delay
@@ -165,16 +165,17 @@ class env_rcll():
                 need_bases = None
                 missing_bases = None
                 cap_col = None
-                to = None
+                next_pos = None
                 
                 ##### correct processing_order to actual next machine
                 # decide which RS
-                if to_machine[0] == 'R':
+                if stage[0] == 'R':
                     # find which ring
-                    ring_pos = int(to_machine[1])
+                    ring_pos = int(stage[1])
                     ring_col = order[ring_pos]
+                    ring_num = 3 - order[1:4].count(0)
                     
-                    # check if it has ring on this slot
+                    # check if it has ring on this slot; otherwise it is an non-existent processing step
                     if ring_col == 0:
                         continue
                     
@@ -183,64 +184,83 @@ class env_rcll():
                         to_machine = "RS1"
                     elif ring_col in self.rings[1]:
                         to_machine = "RS2"
-                    
-                    ### consider additional bases
-                    # figure out if current ring need additional bases
-                    if ring_col == self.ring_additional_bases[0]: # 2 bases
-                        need_bases = 2
-                    elif ring_col == self.ring_additional_bases[1]: # 1 bases
-                        need_bases = 1
-                    else:
-                        need_bases = 0
-                    
-                    # check if need gather additional bases; need minus have
-                    missing_bases = need_bases - self.rings_buf_bases[int(to_machine[2]) - 1]
-                    if missing_bases >= 1:
-                        # we are right before driving to RS and will still account this step
-                        # we condsider an additional back and forth to a BS from next RS *per* missing base
-                        extra = self.machines[to_machine].distance(self.machines["BS"]) * 2 # 2 for back-forth
-                        
-                        distance += extra * missing_bases
-                        wait += self.grap_and_place_time * missing_bases # assumption on lost time grapping bases
                         
                 # decide which CS
-                elif to_machine == "CS":
+                elif stage == "CS":
                     cap_col = order[4]
                     if cap_col == 2:
                         to_machine = "CS1"
                     elif cap_col == 1:
                         to_machine = "CS2"
+                        
+                # otherwise stage matches machine name
+                else:
+                    to_machine = stage
                 
-                # get specific machine position and compute travling distance
-                to = self.machines[to_machine]
-#                print("at: {}, to: {}, distance: {}".format(at, to, at.distance(to)))
-                distance += at.distance(to)
-                at = to
                 
-                # additional wait time per machine; assumed after we arrive and do process there
-                # computation of reward for this step
+                ##### get specific machine position and compute travling distance
+                next_pos = self.machines[to_machine]
+#                print("at: {}, to: {}, distance: {}".format(current_pos, next_pos, current_pos.distance(next_pos)))
+                distance += current_pos.distance(next_pos)
+                current_pos = next_pos # we now made the step to next machine
+                
+                
+                ###### additional wait time per machine; assumed after we arrive and do process there
+                ###### computation of reward for this step
                 if to_machine == "BS":
-                    wait += 5 # estimate
+                    wait += 5 # estimate/assumption
                     
                     # no reward for getting a base
-                    reward = 0
-                elif to_machine[0] == 'R':
-                    wait += 50
+                    reward += 0
                     
-                    # TODO: CURRENTLY AT - depending on ring color => CC, for all 3 rings:
-                    for i in range(3):
-                        if order[1 + i] == self.ring_additional_bases[0]: # 2 bases
-                            E_reward += 20
-                            # additional points for base feeded into RS
-                            E_reward += 4
-                        elif order[1 + i] == self.ring_additional_bases[1]: # 1 bases
-                            E_reward += 10
-                            # additional points for base feeded into RS
-                            E_reward += 2
-                        elif order[1 + i] != 0: # 0 bases
-                            E_reward += 5
+                elif to_machine == "RS1" or to_machine == "RS2":
+                    wait += 50 # mean official delay
+                    
+                    ### consider additional bases and reward
+                    # figure out if current ring need additional bases
+                    if ring_col == self.ring_additional_bases[0]: # 2 bases
+                        need_bases = 2
+                        
+                        # reward for CC2
+                        reward += 20
+                                                
+                    elif ring_col == self.ring_additional_bases[1]: # 1 bases
+                        need_bases = 1
+                        
+                        # reward for CC1
+                        reward += 10
+                    else:
+                        need_bases = 0
+                        
+                        # reward for CC0
+                        reward += 5
+                    
+                    # check if need gather additional bases; need minus have
+                    missing_bases = need_bases - self.rings_buf_bases[int(to_machine[2]) - 1]
+                    if missing_bases >= 1:
+                        # we condsider an additional back and forth to a BS from current RS *per* missing base
+                        extra = current_pos.distance(self.machines["BS"]) * 2 # 2 for back-forth
+                        
+                        distance += extra * missing_bases
+                        wait += self.grap_and_place_delay * missing_bases # assumption on lost time grapping bases
+                        
+                        # additional points for base feeded into RS
+                        reward += 2 * missing_bases
+                    
+                    # for final ring, depending on number of rings
+                    if ring_num == ring_pos:
+                        if ring_num == 1:
+                            # reward for C1
+                            reward += 10
+                        elif ring_num == 2:
+                            # reward for C2
+                            reward += 30
+                        elif ring_num == 3:
+                            # reward for C3
+                            reward += 80
+                        print("ONCE ring_num!")
                             
-                elif to_machine == "CS":
+                elif to_machine == "CS1" or to_machine == "CS2":
                     wait += 20 # mount cap
                     # additional time to buffer
                     wait += 20 # for buffer cap first
@@ -250,14 +270,14 @@ class env_rcll():
                     distance_rs1 = self.machines[to_machine].distance(self.machines["RS1"])
                     distance_rs2 = self.machines[to_machine].distance(self.machines["RS2"])
                     wait += min(distance_rs1, distance_rs2) * 2 # 2 for back-forth
-                    wait += self.grap_and_place_time # assumption on lost time grapping clear bases
+                    wait += self.grap_and_place_delay # assumption on lost time grapping clear bases
                 elif to_machine == "DS":
                     wait += 30
                 elif to_machine == "SS":
                     wait += 10 # estimate
                 
                 # assume each step involves grappign and plaing a product at least once
-                wait += self.grap_and_place_time
+                wait += self.grap_and_place_delay
                 
                 # assume 1m per 2s
                 E_time += distance * 2 + wait
