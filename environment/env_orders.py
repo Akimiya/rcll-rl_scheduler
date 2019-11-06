@@ -159,6 +159,13 @@ class env_rcll():
                 distance = 0 # the traveled/movement distance 
                 wait = 0 # machine processing time + arm-movement delay
                 reward = 0 # reward for that step
+                # for safety of reusing
+                ring_col = None
+                ring_pos = None
+                need_bases = None
+                missing_bases = None
+                cap_col = None
+                to = None
                 
                 ##### correct processing_order to actual next machine
                 # decide which RS
@@ -211,10 +218,28 @@ class env_rcll():
                 at = to
                 
                 # additional wait time per machine; assumed after we arrive and do process there
+                # computation of reward for this step
                 if to_machine == "BS":
                     wait += 5 # estimate
+                    
+                    # no reward for getting a base
+                    reward = 0
                 elif to_machine[0] == 'R':
                     wait += 50
+                    
+                    # TODO: CURRENTLY AT - depending on ring color => CC, for all 3 rings:
+                    for i in range(3):
+                        if order[1 + i] == self.ring_additional_bases[0]: # 2 bases
+                            E_reward += 20
+                            # additional points for base feeded into RS
+                            E_reward += 4
+                        elif order[1 + i] == self.ring_additional_bases[1]: # 1 bases
+                            E_reward += 10
+                            # additional points for base feeded into RS
+                            E_reward += 2
+                        elif order[1 + i] != 0: # 0 bases
+                            E_reward += 5
+                            
                 elif to_machine == "CS":
                     wait += 20 # mount cap
                     # additional time to buffer
@@ -239,7 +264,7 @@ class env_rcll():
                 
                 # save the step to next machine
                 if E_times_next[idx] == None:
-                    print("ONCE TIME!!")
+                    print("ONCE: TIME!!")
                     E_times_next[idx] = E_time
             
             
@@ -247,7 +272,7 @@ class env_rcll():
                 
                 # TODO: MAJOR ERROR => need only FUTURE expected reward and not total..
                 
-                # no reward for getting a base; starting value
+                
                 E_reward = 0
                 
                 # depending on ring color => CC, for all 3 rings:
