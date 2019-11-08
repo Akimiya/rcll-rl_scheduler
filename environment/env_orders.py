@@ -11,25 +11,6 @@ from copy import deepcopy # more performant then dict()
 
 # TODO: need to make refbox_comm into a class or uglily import it to get running globals
 
-#### for debug scenario
-#self.orders = [[1, 0, 0, 0, 2, 0, 0, 1, 1021], # @ 0006
-#               [2, 3, 0, 0, 2, 0, 0, 1, 1021], # @ 0006
-#               [0, 0, 0, 0, 0, 0, 0, 0, 0],
-#               [1, 1, 3, 4, 2, 0, 0, 678, 834], # @ 0006
-#               [0, 0, 0, 0, 0, 0, 0, 0, 0],
-#               [0, 0, 0, 0, 0, 0, 0, 0, 0],
-#               [0, 0, 0, 0, 0, 0, 0, 0, 0],
-#               [3, 2, 0, 0, 2, 0, 0, 710, 817], # @ 0209
-#               [0, 0, 0, 0, 0, 0, 0, 0, 0]]
-#self.machines = {'CS1': (-3.5, 4.5),
-#                 'CS2': (2.5, 0.5),
-#                 'RS1': (-1.5, 2.5),
-#                 'RS2': (1.5, 7.5),
-#                 'SS': (3.5, 0.5),
-#                 'BS': (4.5, 7.5),
-#                 'DS': (2.5, 4.5)}
-#self.rings = [[3, 4], [1, 2]]
-
 def create_order(C=-1, fill=False, amount=False, compet=False, window=-1):
     # enum bases red = 1, black, silver
     base = int(np.random.uniform(1, 4))
@@ -114,7 +95,7 @@ class env_rcll():
         self.FINISHED_ORDER = 20
         
         self.ACTION_SPACE_SIZE = 3 + 4 + 2 + 1
-        self.TOTAL_NUM_ORDERS = 9
+        self.TOTAL_NUM_ORDERS = 9 # warning: currently does not scale all
         
         # there are 3 rings, so 4 repeats
         self.ORDER_NORM_FACTOR = [3, 4, 4, 4, 2, 1, 1, 1021, 1021]
@@ -161,6 +142,7 @@ class env_rcll():
             ### reward related parameters
             E_reward = 0
             
+            # TODO: Expectation of when already have fitting partial product => consider in step
             ##### track machine path, looping over future machines
             for stage in self.processing_order[current:]:
                 
@@ -268,7 +250,6 @@ class env_rcll():
                         elif ring_num == 3:
                             # reward for C3
                             reward += 80
-                        print("ONCE FINAL RING!")
                             
                 elif to_machine == "CS1" or to_machine == "CS2":
                     # additional time to buffer
@@ -319,10 +300,8 @@ class env_rcll():
                 
                 # save the step to next machine
                 if E_times_next[idx] == None:
-                    print("ONCE: TIME!!")
                     E_times_next[idx] = E_time
                 if E_rewards_next[idx] == None:
-                    print("ONCE: REWARD!!")
                     E_rewards_next[idx] = E_reward
             
             
@@ -457,7 +436,7 @@ class env_rcll():
         
         ##### UPDATING PRODUCT
         # format is a  two digit integer, first the category, second the color
-        assert action >= 0 and action <= 99
+        assert action >= 0 and action <= 
         action_type = int(action / 10)
         action_color = action % 10
         
@@ -578,6 +557,16 @@ class env_rcll():
 
 
 if __name__ == "__main__":
+    print("Please import the file.")
+    assert False
+    
+    
+    # testing code
+    # deactivate numpy scientific notation printing..
+    np.set_printoptions(suppress=True)
+    
+    
+    obs = get_observation(self)[0]
     
     
     
@@ -587,14 +576,33 @@ if __name__ == "__main__":
     
     
     
+    self.orders = [[1, 0, 0, 0, 2, 0, 0, 1, 1021], # @ 0006
+                   [2, 3, 0, 0, 2, 0, 0, 1, 1021], # @ 0006
+                   [1, 2, 1, 0, 2, 0, 0, 875, 1009], # @ 0239
+                   [1, 1, 3, 4, 2, 0, 0, 678, 834], # @ 0006
+                   [2, 0, 0, 0, 1, 0, 0, 421, 572], # @ 0268
+                   [3, 0, 0, 0, 2, 1, 0, 640, 748], # @ 0403
+                   [2, 0, 0, 0, 2, 0, 1, 841, 1021], # @ 0661
+                   [3, 2, 0, 0, 2, 0, 0, 710, 817], # @ 0209
+                   [0, 0, 0, 0, 0, 0, 0, 0, 0]]
     
     
     
-    
-    
-    
-    
-    
-    
-    
-    print("Please import the file")
+    #### for debug scenario
+#    self.orders = [[1, 0, 0, 0, 2, 0, 0, 1, 1021], # @ 0006
+#                   [2, 3, 0, 0, 2, 0, 0, 1, 1021], # @ 0006
+#                   [0, 0, 0, 0, 0, 0, 0, 0, 0],
+#                   [1, 1, 3, 4, 2, 0, 0, 678, 834], # @ 0006
+#                   [0, 0, 0, 0, 0, 0, 0, 0, 0],
+#                   [0, 0, 0, 0, 0, 0, 0, 0, 0],
+#                   [0, 0, 0, 0, 0, 0, 0, 0, 0],
+#                   [3, 2, 0, 0, 2, 0, 0, 710, 817], # @ 0209
+#                   [0, 0, 0, 0, 0, 0, 0, 0, 0]]
+#    self.machines = {'CS1': (-3.5, 4.5),
+#                     'CS2': (2.5, 0.5),
+#                     'RS1': (-1.5, 2.5),
+#                     'RS2': (1.5, 7.5),
+#                     'SS': (3.5, 0.5),
+#                     'BS': (4.5, 7.5),
+#                     'DS': (2.5, 4.5)}
+#    self.rings = [[3, 4], [1, 2]]
