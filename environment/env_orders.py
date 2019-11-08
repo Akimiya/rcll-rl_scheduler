@@ -21,6 +21,14 @@ from copy import deepcopy # more performant then dict()
 #               [0, 0, 0, 0, 0, 0, 0, 0, 0],
 #               [3, 2, 0, 0, 2, 0, 0, 710, 817], # @ 0209
 #               [0, 0, 0, 0, 0, 0, 0, 0, 0]]
+#self.machines = {'CS1': (-3.5, 4.5),
+#                 'CS2': (2.5, 0.5),
+#                 'RS1': (-1.5, 2.5),
+#                 'RS2': (1.5, 7.5),
+#                 'SS': (3.5, 0.5),
+#                 'BS': (4.5, 7.5),
+#                 'DS': (2.5, 4.5)}
+#self.rings = [[3, 4], [1, 2]]
 
 def create_order(C=-1, fill=False, amount=False, compet=False, window=-1):
     # enum bases red = 1, black, silver
@@ -135,8 +143,8 @@ class env_rcll():
             if order[0] == 0:
                 E_rewards.append(0)
                 E_times.append(0)
-                E_rewards_next.append(0)
-                E_times_next.append(0)
+                E_rewards_next[idx] = 0
+                E_times_next[idx] = 0
                 continue
             
             ### time related parameters
@@ -204,6 +212,8 @@ class env_rcll():
                 distance += current_pos.distance(next_pos)
                 current_pos = next_pos # we now made the step to next machine
                 
+                # assume each step involves grappign and plaing a product at least once
+                wait += self.grap_and_place_delay
                 
                 ###### additional wait time per machine; assumed after we arrive and do process there
                 ###### computation of reward for this step
@@ -258,81 +268,62 @@ class env_rcll():
                         elif ring_num == 3:
                             # reward for C3
                             reward += 80
-                        print("ONCE ring_num!")
+                        print("ONCE FINAL RING!")
                             
                 elif to_machine == "CS1" or to_machine == "CS2":
-                    wait += 20 # mount cap
                     # additional time to buffer
                     wait += 20 # for buffer cap first
                     wait += 3 * 2 # traveling around the machine
+                    
                     # dispose to nearest RS for now
                     # TODO: optimize use; depending wheter we still can reuse those
-                    distance_rs1 = self.machines[to_machine].distance(self.machines["RS1"])
-                    distance_rs2 = self.machines[to_machine].distance(self.machines["RS2"])
+                    distance_rs1 = current_pos.distance(self.machines["RS1"])
+                    distance_rs2 = current_pos.distance(self.machines["RS2"])
                     wait += min(distance_rs1, distance_rs2) * 2 # 2 for back-forth
                     wait += self.grap_and_place_delay # assumption on lost time grapping clear bases
+                    
+                    # reward for buffering a cap
+                    reward += 2
+                    
+                    # mount cap
+                    wait += 20
+                    # reward fo mount cap
+                    reward += 10
+                    
                 elif to_machine == "DS":
                     wait += 30
+                    
+                    # comsidering delivery window; accounting for next E_time update
+                    E_delivery = self.time + E_time + distance * 2 + wait
+                    if E_delivery < order[-2]:
+                        reward += 1 # wrong delivery
+                    elif E_delivery < order[-1]:
+                        reward += 20 # (correct) delivery
+                    elif E_delivery < order[-1] + 10:
+                        tmp = 15 - (E_delivery - order[-1]) * 1.5 + 5
+                        assert tmp >= 5 and tmp <= 20
+                        reward += tmp # delayed delivery
+                    else:
+                        reward += 5 # late delivery
+                    
                 elif to_machine == "SS":
                     wait += 10 # estimate
+                    
+                    reward -= 10 # listed cost
                 
-                # assume each step involves grappign and plaing a product at least once
-                wait += self.grap_and_place_delay
-                
-                # assume 1m per 2s
+                # accumulate time; assume 1m per 2s
                 E_time += distance * 2 + wait
+                
+                # accumulate reward
+                E_reward += reward
                 
                 # save the step to next machine
                 if E_times_next[idx] == None:
                     print("ONCE: TIME!!")
                     E_times_next[idx] = E_time
-            
-            
-                ########################### REWARD ############################
-                
-                # TODO: MAJOR ERROR => need only FUTURE expected reward and not total..
-                
-                
-                E_reward = 0
-                
-                # depending on ring color => CC, for all 3 rings:
-                for i in range(3):
-                    if order[1 + i] == self.ring_additional_bases[0]: # 2 bases
-                        E_reward += 20
-                        # additional points for base feeded into RS
-                        E_reward += 4
-                    elif order[1 + i] == self.ring_additional_bases[1]: # 1 bases
-                        E_reward += 10
-                        # additional points for base feeded into RS
-                        E_reward += 2
-                    elif order[1 + i] != 0: # 0 bases
-                        E_reward += 5
-                
-                # depending on number of rings => C
-                num_rings = 3 - order[1:4].count(0)
-                if num_rings == 1:
-                    E_reward += 10
-                elif num_rings == 2:
-                    E_reward += 30
-                elif num_rings == 3:
-                    E_reward += 80
-                    
-                # buffering and mounting the cap
-                E_reward += 2 + 10
-                
-                # comsidering delivery window
-                E_delivery = self.time + E_time
-                if E_delivery < order[-2]:
-                    E_reward += 1 # wrong delivery
-                elif E_delivery < order[-1]:
-                    E_reward += 20 # (correct) delivery
-                elif E_delivery < order[-1] + 10:
-                    tmp = 15 - (E_delivery - order[-1]) * 1.5 + 5
-                    assert tmp >= 5 and tmp <= 20
-                    E_reward += tmp # delayed delivery
-                else:
-                    E_reward += 5 # late delivery
-            
+                if E_rewards_next[idx] == None:
+                    print("ONCE: REWARD!!")
+                    E_rewards_next[idx] = E_reward
             
             
             ##### for each order we add to vector
@@ -341,29 +332,31 @@ class env_rcll():
         
         
         # formulate all in a matrix
+        # TODO: also consider variance?
+        observation_ = np.array([E_rewards] + [E_rewards_next] + [E_times] + [E_times_next]).T
+        del_windows = np.array([o[-2:] for o in self.orders])
+        observation = np.concatenate((observation_, del_windows), axis=1)
+        remaining_time = 1021 - self.time
         
-        
-        observation = [E_rewards] + [E_times]
-        np.array(observation)
         
         # normalize output
-        if self.normalize:
-            orders_norm = []
-            for order in self.orders:
-                order_norm = []
-                for idx, part in enumerate(order):
-                    order_norm.append(part / self.ORDER_NORM_FACTOR[idx])
-                orders_norm.append(order_norm)
-            
-            pip_norm = []
-            for idx, part in enumerate(self.pipeline):
-                pip_norm.append(part / self.ORDER_NORM_FACTOR[idx])
-                
-            observation = sum(orders_norm, []) + pip_norm
-        else:            
-            observation = sum(self.orders, []) + self.pipeline
+#        if self.normalize:
+#            orders_norm = []
+#            for order in self.orders:
+#                order_norm = []
+#                for idx, part in enumerate(order):
+#                    order_norm.append(part / self.ORDER_NORM_FACTOR[idx])
+#                orders_norm.append(order_norm)
+#            
+#            pip_norm = []
+#            for idx, part in enumerate(self.pipeline):
+#                pip_norm.append(part / self.ORDER_NORM_FACTOR[idx])
+#                
+#            observation = sum(orders_norm, []) + pip_norm
+#        else:            
+#            observation = sum(self.orders, []) + self.pipeline
         
-        return observation
+        return observation, remaining_time
     
     def render(self):
         print("orders: {} | pipeline: {}{}".format(self.orders, self.pipeline, self.pipeline_cap))
