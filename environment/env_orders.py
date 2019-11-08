@@ -111,14 +111,20 @@ class env_rcll():
         # TODO: return normalized parameters
         self.normalize = normalize
     
-    def expectation_order(self, order, current_stage, current_pos):
+    def expectation_order(self, order, current_stage, current_pos, processing=None):
         E_time = 0
         E_reward = 0
         E_time_next = None
         E_reward_next = None
         
         ##### track machine path, looping over future machines
-        for stage in self.processing_order[self.processing_order.index(currnet_stage):]:
+        if processing == None:
+            cont = self.processing_order.index(current_stage)
+            processing = self.processing_order
+        else:
+            cont = processing.index(current_stage)
+            
+        for stage in processing[cont:]:
             if stage == "FIN":
                 continue
             
@@ -287,17 +293,18 @@ class env_rcll():
     def get_observation(self):
         
         # expected time and reward
-        options = len(self.orders) + 1 # assume just one order with two products
+        options = len(self.orders)
         E_rewards = [None] * options # accumulated for full order
         E_times = [None] * options # accumulated for full order
         E_rewards_next = [None] * options # next step
         E_times_next = [None] * options # next step
+        E_multi_order = [0, 0, 0, 0] # additional parameters for the one order of two products
         
         for idx, order in enumerate(self.orders):
             # have no order here yet
             if order[0] == 0:
-                E_rewards.append(0)
-                E_times.append(0)
+                E_rewards[idx] = 0
+                E_times[idx] = 0
                 E_rewards_next[idx] = 0
                 E_times_next[idx] = 0
                 continue
@@ -321,18 +328,28 @@ class env_rcll():
             # we will definitely need to build one order normally; other can be normal or from SS
             if order[5] == 1:
                 # case 1) we make the whole process again starting from last machine
-                E_time2, E_time_next2, E_reward2, E_reward_next2 = self.expectation_order(order, current_stage2, "DS")
+                E_time2, E_time_next2, E_reward2, E_reward_next2 = self.expectation_order(order, current_stage2, self.machines["DS"])
+                # case 2) take one from the SS; consider it as extra sub-order
+                E_time3, E_time_next3, E_reward3, E_reward_next3 = self.expectation_order(order, "SS", self.machines["DS"], ["SS", "DS", "FIN"])
+                
+                # assemble the extra vector before updating E's; delivery window already present in other
+                E_multi_order = [E_reward + E_reward3, 
+                                 E_reward_next,
+                                 E_time + E_time3,
+                                 E_time_next]
+                
                 E_time += E_time2
                 E_reward += E_reward2
                 # when the first product is finished we have intermediate second
                 if current_stage == "FIN":
-                    E_time_next = E_time_next2
                     E_reward_next = E_reward_next2
-                
+                    E_time_next = E_time_next2
+                    E_multi_order[1] = E_reward_next3
+                    E_multi_order[3] = E_time_next3
             
             ##### for each order we add to vector
-            E_times.append(E_time)
-            E_rewards.append(E_reward)
+            E_times[idx] = E_time
+            E_rewards[idx] = E_reward
             E_times_next[idx] = E_time_next
             E_rewards_next[idx] = E_reward_next
         
@@ -342,7 +359,8 @@ class env_rcll():
         observation_ = np.array([E_rewards] + [E_rewards_next] + [E_times] + [E_times_next]).T
         del_windows = np.array([o[-2:] for o in self.orders])
         observation = np.concatenate((observation_, del_windows), axis=1)
-        remaining_time = 1021 - self.time
+        # rest parameters; handling double order and time
+        remainder = E_multi_order +  [1021 - self.time]
         
         
         # normalize output
@@ -362,7 +380,7 @@ class env_rcll():
 #        else:            
 #            observation = sum(self.orders, []) + self.pipeline
         
-        return observation, remaining_time
+        return observation, remainder
     
     def render(self):
         print("orders: {} | pipeline: {}{}".format(self.orders, self.pipeline, self.pipeline_cap))
@@ -586,17 +604,17 @@ class env_rcll():
 
 if __name__ == "__main__":
     print("Please import the file.")
-    assert False
+#    assert False
     
     
     # testing code
     
     # deactivate numpy scientific notation printing..
-    np.set_printoptions(suppress=True)
-    
-    
-    obs = get_observation(self)[0]
-    get_observation(self)[0][:, :2]
+#    np.set_printoptions(suppress=True)
+#    
+#    
+#    obs = get_observation(self)[0]
+#    get_observation(self)[0][:, :2]
     
     
     
@@ -631,7 +649,7 @@ if __name__ == "__main__":
                      'CS2': field_pos(2.5, 0.5),
                      'RS1': field_pos(-1.5, 2.5),
                      'RS2': field_pos(1.5, 7.5),
-                     'SS': field_pos(3.5, 0.5),
+                     'SS': field_pos(3.5, 1.5),
                      'BS': field_pos(4.5, 7.5),
                      'DS': field_pos(2.5, 4.5)}
     self.ring_additional_bases = [3, 1, 2, 4]
