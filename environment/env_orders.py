@@ -101,7 +101,7 @@ class env_rcll():
         self.ORDER_NORM_FACTOR = [3, 4, 4, 4, 2, 1, 1, 1021, 1021]
         
         # order of steps needed to fulfill an oder
-        self.processing_order = ["BS", "R1", "R2", "R3", "CS", "DS"]
+        self.processing_order = ["BS", "R1", "R2", "R3", "CS", "DS", "FIN"]
         
         # additional time factor for time lost on grapping products with machine arm
         # 2017 Carologistics needs 68sec for adjusting grapping and plaing on CS
@@ -118,7 +118,9 @@ class env_rcll():
         E_reward_next = None
         
         ##### track machine path, looping over future machines
-        for stage in self.processing_order[current_stage:]:
+        for stage in self.processing_order[self.processing_order.index(currnet_stage):]:
+            if stage == "FIN":
+                continue
             
             distance = 0 # the traveled/movement distance 
             wait = 0 # machine processing time + arm-movement delay
@@ -285,10 +287,11 @@ class env_rcll():
     def get_observation(self):
         
         # expected time and reward
-        E_rewards = [] # accumulated for full order
-        E_times = [] # accumulated for full order
-        E_rewards_next = [None] * len(self.orders) # next step
-        E_times_next = [None] * len(self.orders) # next step
+        options = len(self.orders) + 1 # assume just one order with two products
+        E_rewards = [None] * options # accumulated for full order
+        E_times = [None] * options # accumulated for full order
+        E_rewards_next = [None] * options # next step
+        E_times_next = [None] * options # next step
         
         for idx, order in enumerate(self.orders):
             # have no order here yet
@@ -301,7 +304,11 @@ class env_rcll():
             
             # account for partial processed products => in step() (update self.order_stage for all)
             # we start in the order processing pipeline from the step it currently is in
-            current_stage = self.processing_order.index(self.order_stage[idx])
+            current_stage = self.order_stage[idx]
+            # we can have list in case of 2 requested products; work with first initially
+            if type(current_stage) == list:
+                current_stage2 = current_stage[1]
+                current_stage = current_stage[0]
             
             # TODO: consider multiple robots (need outside self-loop with robot selection). search closest free robot?
             # robots are reasonably fast that pathing, thus which robot, is a more minor problem
@@ -313,8 +320,14 @@ class env_rcll():
             # consider if order need mupltiple products
             # we will definitely need to build one order normally; other can be normal or from SS
             if order[5] == 1:
-                if current_stage != "DS":
-                    pass
+                # case 1) we make the whole process again starting from last machine
+                E_time2, E_time_next2, E_reward2, E_reward_next2 = self.expectation_order(order, current_stage2, "DS")
+                E_time += E_time2
+                E_reward += E_reward2
+                # when the first product is finished we have intermediate second
+                if current_stage == "FIN":
+                    E_time_next = E_time_next2
+                    E_reward_next = E_reward_next2
                 
             
             ##### for each order we add to vector
@@ -604,6 +617,7 @@ if __name__ == "__main__":
                    [2, 0, 0, 0, 2, 0, 1, 841, 1021], # @ 0661
                    [3, 2, 0, 0, 2, 0, 0, 710, 817], # @ 0209
                    [0, 0, 0, 0, 0, 0, 0, 0, 0]]
+    self.order_stage[5] = [self.order_stage[5], "BS"]
 #    self.orders = [[1, 0, 0, 0, 2, 0, 0, 1, 1021], # @ 0006
 #                   [2, 3, 0, 0, 2, 0, 0, 1, 1021], # @ 0006
 #                   [0, 0, 0, 0, 0, 0, 0, 0, 0],
