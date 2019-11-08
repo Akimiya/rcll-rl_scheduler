@@ -111,6 +111,177 @@ class env_rcll():
         # TODO: return normalized parameters
         self.normalize = normalize
     
+    def expectation_order(self, order, current_stage, current_pos):
+        E_time = 0
+        E_reward = 0
+        E_time_next = None
+        E_reward_next = None
+        
+        ##### track machine path, looping over future machines
+        for stage in self.processing_order[current_stage:]:
+            
+            distance = 0 # the traveled/movement distance 
+            wait = 0 # machine processing time + arm-movement delay
+            reward = 0 # reward for that step
+            # for safety of reusing
+            ring_col = None
+            ring_pos = None
+            need_bases = None
+            missing_bases = None
+            cap_col = None
+            next_pos = None
+            
+            ##### correct processing_order to actual next machine
+            # decide which RS
+            if stage[0] == 'R':
+                # find which ring
+                ring_pos = int(stage[1])
+                ring_col = order[ring_pos]
+                ring_num = 3 - order[1:4].count(0)
+                
+                # check if it has ring on this slot; otherwise it is an non-existent processing step
+                if ring_col == 0:
+                    continue
+                
+                # figure out where we can get it
+                if ring_col in self.rings[0]:
+                    to_machine = "RS1"
+                elif ring_col in self.rings[1]:
+                    to_machine = "RS2"
+                    
+            # decide which CS
+            elif stage == "CS":
+                cap_col = order[4]
+                if cap_col == 2:
+                    to_machine = "CS1"
+                elif cap_col == 1:
+                    to_machine = "CS2"
+                    
+            # otherwise stage matches machine name
+            else:
+                to_machine = stage
+            
+            
+            ##### get specific machine position and compute travling distance
+            next_pos = self.machines[to_machine]
+#                print("at: {}, to: {}, distance: {}".format(current_pos, next_pos, current_pos.distance(next_pos)))
+            distance += current_pos.distance(next_pos)
+            current_pos = next_pos # we now made the step to next machine
+            
+            # assume each step involves grappign and plaing a product at least once
+            wait += self.grap_and_place_delay
+            
+            ###### additional wait time per machine; assumed after we arrive and do process there
+            ###### computation of reward for this step
+            if to_machine == "BS":
+                wait += 5 # estimate/assumption
+                
+                # no reward for getting a base
+                reward += 0
+                
+            elif to_machine == "RS1" or to_machine == "RS2":
+                wait += 50 # mean official delay
+                
+                ### consider additional bases and reward
+                # figure out if current ring need additional bases
+                if ring_col == self.ring_additional_bases[0]: # 2 bases
+                    need_bases = 2
+                    
+                    # reward for CC2
+                    reward += 20
+                                            
+                elif ring_col == self.ring_additional_bases[1]: # 1 bases
+                    need_bases = 1
+                    
+                    # reward for CC1
+                    reward += 10
+                else:
+                    need_bases = 0
+                    
+                    # reward for CC0
+                    reward += 5
+                
+                # check if need gather additional bases; need minus have
+                missing_bases = need_bases - self.rings_buf_bases[int(to_machine[2]) - 1]
+                if missing_bases >= 1:
+                    # we condsider an additional back and forth to a BS from current RS *per* missing base
+                    extra = current_pos.distance(self.machines["BS"]) * 2 # 2 for back-forth
+                    
+                    distance += extra * missing_bases
+                    wait += self.grap_and_place_delay * missing_bases # assumption on lost time grapping bases
+                    
+                    # additional points for base feeded into RS
+                    reward += 2 * missing_bases
+                
+                # for final ring, depending on number of rings
+                if ring_num == ring_pos:
+                    if ring_num == 1:
+                        # reward for C1
+                        reward += 10
+                    elif ring_num == 2:
+                        # reward for C2
+                        reward += 30
+                    elif ring_num == 3:
+                        # reward for C3
+                        reward += 80
+                        
+            elif to_machine == "CS1" or to_machine == "CS2":
+                # additional time to buffer
+                wait += 20 # for buffer cap first
+                wait += 3 * 2 # traveling around the machine
+                
+                # dispose to nearest RS for now
+                # TODO: optimize use; depending wheter we still can reuse those
+                distance_rs1 = current_pos.distance(self.machines["RS1"])
+                distance_rs2 = current_pos.distance(self.machines["RS2"])
+                wait += min(distance_rs1, distance_rs2) * 2 # 2 for back-forth
+                wait += self.grap_and_place_delay # assumption on lost time grapping clear bases
+                
+                # reward for buffering a cap
+                reward += 2
+                
+                # mount cap
+                wait += 20
+                # reward fo mount cap
+                reward += 10
+                
+            elif to_machine == "DS":
+                wait += 30
+                
+                # comsidering delivery window; accounting for next E_time update
+                E_delivery = self.time + E_time + distance * 2 + wait
+                if E_delivery < order[-2]:
+                    reward += 1 # wrong delivery
+                elif E_delivery < order[-1]:
+                    reward += 20 # (correct) delivery
+                elif E_delivery < order[-1] + 10:
+                    tmp = 15 - (E_delivery - order[-1]) * 1.5 + 5
+                    assert tmp >= 5 and tmp <= 20
+                    reward += tmp # delayed delivery
+                else:
+                    reward += 5 # late delivery
+                
+            elif to_machine == "SS":
+                wait += 10 # estimate
+                
+                reward -= 10 # listed cost
+            
+            # accumulate time; assume 1m per 2s
+            E_time += distance * 2 + wait
+            
+            # accumulate reward
+            E_reward += reward
+            
+            # save the step to next machine
+            if E_time_next == None:
+                E_time_next = E_time
+            if E_reward_next == None:
+                E_reward_next = E_reward
+            
+#            print("E_time: {} | E_time_next: {} | E_reward: {} | E_reward_next: {}".format(E_time, E_time_next, E_reward, E_reward_next))
+        
+        return E_time, E_time_next, E_reward, E_reward_next
+    
     def get_observation(self):
         
         # expected time and reward
@@ -128,186 +299,29 @@ class env_rcll():
                 E_times_next[idx] = 0
                 continue
             
-            ### time related parameters
-            E_time = 0
-            
             # account for partial processed products => in step() (update self.order_stage for all)
             # we start in the order processing pipeline from the step it currently is in
-            current = self.processing_order.index(self.order_stage[idx])
+            current_stage = self.processing_order.index(self.order_stage[idx])
             
             # TODO: consider multiple robots (need outside self-loop with robot selection). search closest free robot?
             # robots are reasonably fast that pathing, thus which robot, is a more minor problem
             current_pos = self.robots[0]
             
-            ### reward related parameters
-            E_reward = 0
-            
             # TODO: Expectation of when already have fitting partial product => consider in step
-            ##### track machine path, looping over future machines
-            for stage in self.processing_order[current:]:
-                
-                distance = 0 # the traveled/movement distance 
-                wait = 0 # machine processing time + arm-movement delay
-                reward = 0 # reward for that step
-                # for safety of reusing
-                ring_col = None
-                ring_pos = None
-                need_bases = None
-                missing_bases = None
-                cap_col = None
-                next_pos = None
-                
-                ##### correct processing_order to actual next machine
-                # decide which RS
-                if stage[0] == 'R':
-                    # find which ring
-                    ring_pos = int(stage[1])
-                    ring_col = order[ring_pos]
-                    ring_num = 3 - order[1:4].count(0)
-                    
-                    # check if it has ring on this slot; otherwise it is an non-existent processing step
-                    if ring_col == 0:
-                        continue
-                    
-                    # figure out where we can get it
-                    if ring_col in self.rings[0]:
-                        to_machine = "RS1"
-                    elif ring_col in self.rings[1]:
-                        to_machine = "RS2"
-                        
-                # decide which CS
-                elif stage == "CS":
-                    cap_col = order[4]
-                    if cap_col == 2:
-                        to_machine = "CS1"
-                    elif cap_col == 1:
-                        to_machine = "CS2"
-                        
-                # otherwise stage matches machine name
-                else:
-                    to_machine = stage
-                
-                
-                ##### get specific machine position and compute travling distance
-                next_pos = self.machines[to_machine]
-#                print("at: {}, to: {}, distance: {}".format(current_pos, next_pos, current_pos.distance(next_pos)))
-                distance += current_pos.distance(next_pos)
-                current_pos = next_pos # we now made the step to next machine
-                
-                # assume each step involves grappign and plaing a product at least once
-                wait += self.grap_and_place_delay
-                
-                ###### additional wait time per machine; assumed after we arrive and do process there
-                ###### computation of reward for this step
-                if to_machine == "BS":
-                    wait += 5 # estimate/assumption
-                    
-                    # no reward for getting a base
-                    reward += 0
-                    
-                elif to_machine == "RS1" or to_machine == "RS2":
-                    wait += 50 # mean official delay
-                    
-                    ### consider additional bases and reward
-                    # figure out if current ring need additional bases
-                    if ring_col == self.ring_additional_bases[0]: # 2 bases
-                        need_bases = 2
-                        
-                        # reward for CC2
-                        reward += 20
-                                                
-                    elif ring_col == self.ring_additional_bases[1]: # 1 bases
-                        need_bases = 1
-                        
-                        # reward for CC1
-                        reward += 10
-                    else:
-                        need_bases = 0
-                        
-                        # reward for CC0
-                        reward += 5
-                    
-                    # check if need gather additional bases; need minus have
-                    missing_bases = need_bases - self.rings_buf_bases[int(to_machine[2]) - 1]
-                    if missing_bases >= 1:
-                        # we condsider an additional back and forth to a BS from current RS *per* missing base
-                        extra = current_pos.distance(self.machines["BS"]) * 2 # 2 for back-forth
-                        
-                        distance += extra * missing_bases
-                        wait += self.grap_and_place_delay * missing_bases # assumption on lost time grapping bases
-                        
-                        # additional points for base feeded into RS
-                        reward += 2 * missing_bases
-                    
-                    # for final ring, depending on number of rings
-                    if ring_num == ring_pos:
-                        if ring_num == 1:
-                            # reward for C1
-                            reward += 10
-                        elif ring_num == 2:
-                            # reward for C2
-                            reward += 30
-                        elif ring_num == 3:
-                            # reward for C3
-                            reward += 80
-                            
-                elif to_machine == "CS1" or to_machine == "CS2":
-                    # additional time to buffer
-                    wait += 20 # for buffer cap first
-                    wait += 3 * 2 # traveling around the machine
-                    
-                    # dispose to nearest RS for now
-                    # TODO: optimize use; depending wheter we still can reuse those
-                    distance_rs1 = current_pos.distance(self.machines["RS1"])
-                    distance_rs2 = current_pos.distance(self.machines["RS2"])
-                    wait += min(distance_rs1, distance_rs2) * 2 # 2 for back-forth
-                    wait += self.grap_and_place_delay # assumption on lost time grapping clear bases
-                    
-                    # reward for buffering a cap
-                    reward += 2
-                    
-                    # mount cap
-                    wait += 20
-                    # reward fo mount cap
-                    reward += 10
-                    
-                elif to_machine == "DS":
-                    wait += 30
-                    
-                    # comsidering delivery window; accounting for next E_time update
-                    E_delivery = self.time + E_time + distance * 2 + wait
-                    if E_delivery < order[-2]:
-                        reward += 1 # wrong delivery
-                    elif E_delivery < order[-1]:
-                        reward += 20 # (correct) delivery
-                    elif E_delivery < order[-1] + 10:
-                        tmp = 15 - (E_delivery - order[-1]) * 1.5 + 5
-                        assert tmp >= 5 and tmp <= 20
-                        reward += tmp # delayed delivery
-                    else:
-                        reward += 5 # late delivery
-                    
-                elif to_machine == "SS":
-                    wait += 10 # estimate
-                    
-                    reward -= 10 # listed cost
-                
-                # accumulate time; assume 1m per 2s
-                E_time += distance * 2 + wait
-                
-                # accumulate reward
-                E_reward += reward
-                
-                # save the step to next machine
-                if E_times_next[idx] == None:
-                    E_times_next[idx] = E_time
-                if E_rewards_next[idx] == None:
-                    E_rewards_next[idx] = E_reward
+            E_time, E_time_next, E_reward, E_reward_next = self.expectation_order(order, current_stage, current_pos)
             
+            # consider if order need mupltiple products
+            # we will definitely need to build one order normally; other can be normal or from SS
+            if order[5] == 1:
+                if current_stage != "DS":
+                    pass
+                
             
             ##### for each order we add to vector
             E_times.append(E_time)
             E_rewards.append(E_reward)
+            E_times_next[idx] = E_time_next
+            E_rewards_next[idx] = E_reward_next
         
         
         # formulate all in a matrix
@@ -376,6 +390,12 @@ class env_rcll():
             self.machines["CS2"].y *= -1
 
 
+        # defining additional ring bases
+        # first needs 2 bases, 2nd one, 3rd and 4th zero
+        self.ring_additional_bases = [x for x in range(1, 5)]
+        np.random.shuffle(self.ring_additional_bases)
+
+
         # assign the rings to RS1 and RS2 respectively, each getting one complicated
         self.rings = [[0, 0], [0, 0]]
         rnd = int(np.random.uniform(0, 2))
@@ -391,11 +411,6 @@ class env_rcll():
         # current time
         self.time = 1 # as delivery windows are offset by 1 sec we start at 1sec
 
-
-        # defining additional ring bases
-        # first needs 2 bases, 2nd one, 3rd and 4th zero
-        self.ring_additional_bases = [x for x in range(1, 5)]
-        np.random.shuffle(self.ring_additional_bases)
 
 
         # RefBox like behavoir (=distribution); creating full matrix
@@ -436,7 +451,7 @@ class env_rcll():
         
         ##### UPDATING PRODUCT
         # format is a  two digit integer, first the category, second the color
-        assert action >= 0 and action <= 
+        assert action >= 0 and action <= self.TOTAL_NUM_ORDERS
         action_type = int(action / 10)
         action_color = action % 10
         
@@ -562,11 +577,13 @@ if __name__ == "__main__":
     
     
     # testing code
+    
     # deactivate numpy scientific notation printing..
     np.set_printoptions(suppress=True)
     
     
     obs = get_observation(self)[0]
+    get_observation(self)[0][:, :2]
     
     
     
@@ -575,20 +592,18 @@ if __name__ == "__main__":
     
     
     
-    
+    #### for debug scenario
+    self = env_rcll()
+    self.reset()
     self.orders = [[1, 0, 0, 0, 2, 0, 0, 1, 1021], # @ 0006
                    [2, 3, 0, 0, 2, 0, 0, 1, 1021], # @ 0006
-                   [1, 2, 1, 0, 2, 0, 0, 875, 1009], # @ 0239
+                   [1, 4, 1, 0, 2, 0, 0, 848, 1009], # @ 0239
                    [1, 1, 3, 4, 2, 0, 0, 678, 834], # @ 0006
                    [2, 0, 0, 0, 1, 0, 0, 421, 572], # @ 0268
                    [3, 0, 0, 0, 2, 1, 0, 640, 748], # @ 0403
                    [2, 0, 0, 0, 2, 0, 1, 841, 1021], # @ 0661
                    [3, 2, 0, 0, 2, 0, 0, 710, 817], # @ 0209
                    [0, 0, 0, 0, 0, 0, 0, 0, 0]]
-    
-    
-    
-    #### for debug scenario
 #    self.orders = [[1, 0, 0, 0, 2, 0, 0, 1, 1021], # @ 0006
 #                   [2, 3, 0, 0, 2, 0, 0, 1, 1021], # @ 0006
 #                   [0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -598,11 +613,12 @@ if __name__ == "__main__":
 #                   [0, 0, 0, 0, 0, 0, 0, 0, 0],
 #                   [3, 2, 0, 0, 2, 0, 0, 710, 817], # @ 0209
 #                   [0, 0, 0, 0, 0, 0, 0, 0, 0]]
-#    self.machines = {'CS1': (-3.5, 4.5),
-#                     'CS2': (2.5, 0.5),
-#                     'RS1': (-1.5, 2.5),
-#                     'RS2': (1.5, 7.5),
-#                     'SS': (3.5, 0.5),
-#                     'BS': (4.5, 7.5),
-#                     'DS': (2.5, 4.5)}
-#    self.rings = [[3, 4], [1, 2]]
+    self.machines = {'CS1': field_pos(-3.5, 4.5),
+                     'CS2': field_pos(2.5, 0.5),
+                     'RS1': field_pos(-1.5, 2.5),
+                     'RS2': field_pos(1.5, 7.5),
+                     'SS': field_pos(3.5, 0.5),
+                     'BS': field_pos(4.5, 7.5),
+                     'DS': field_pos(2.5, 4.5)}
+    self.ring_additional_bases = [3, 1, 2, 4]
+    self.rings = [[3, 4], [1, 2]]
