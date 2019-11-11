@@ -6,6 +6,7 @@ import struct
 import traceback
 import datetime as dt
 import numpy as np
+import math
 from enum import Enum
 from copy import deepcopy # more performant then dict()
 
@@ -321,8 +322,24 @@ class env_rcll():
             # robots are reasonably fast that pathing, thus which robot, is a more minor problem
             current_pos = self.robots[0]
             
+            # TODO: consider switching insode the expectations
             # TODO: Expectation of when already have fitting partial product => consider in step
             E_time, E_time_next, E_reward, E_reward_next = self.expectation_order(order, current_stage, current_pos)
+            
+            # consider competitive orders, when we deliver on time; apply sigmoid-like scaling for delivery window
+            E_delivery = self.time + E_time
+            if order[6] == 1 and E_delivery >= order[-2] and E_delivery <= order[-1]:
+                # compute bonus points for competitive
+                ratio_scaling = 3.53 # selected as a constant so that we get 3/4 of points at 1/4 window
+                tmp = 1 + math.exp(ratio_scaling)
+                width_scaling = (-20 * tmp) / (2 - tmp) # so that we have about +-10 on each side; exact=20.82640446380697375952
+                length_scaling = (order[-1] - order[-2]) / 2
+                
+                at_time = E_delivery - order[-2] - length_scaling # we make sure we scale inside the window
+                comp_bonus = width_scaling / (1 + math.exp((ratio_scaling * at_time) / length_scaling)) - width_scaling/2
+                
+                E_reward += comp_bonus
+            
             
             # consider if order need mupltiple products
             # we will definitely need to build one order normally; other can be normal or from SS
@@ -346,6 +363,7 @@ class env_rcll():
                     E_time_next = E_time_next2
                     E_multi_order[1] = E_reward_next3
                     E_multi_order[3] = E_time_next3
+            
             
             ##### for each order we add to vector
             E_times[idx] = E_time
@@ -613,9 +631,9 @@ if __name__ == "__main__":
 #    np.set_printoptions(suppress=True)
 #    
 #    
-#    obs = get_observation(self)[0]
-#    get_observation(self)[0][:, :2]
-    
+#    obs = get_observation(self)
+#    get_observation(self)[0][:, :2].tolist() + [get_observation(self)[1][:2]]
+    get_observation(self)[0].tolist() + [get_observation(self)[1]]
     
     
     
@@ -633,8 +651,8 @@ if __name__ == "__main__":
                    [2, 0, 0, 0, 1, 0, 0, 421, 572], # @ 0268
                    [3, 0, 0, 0, 2, 1, 0, 640, 748], # @ 0403
                    [2, 0, 0, 0, 2, 0, 1, 841, 1021], # @ 0661
-                   [3, 2, 0, 0, 2, 0, 0, 710, 817], # @ 0209
-                   [0, 0, 0, 0, 0, 0, 0, 0, 0]]
+                   [3, 2, 0, 0, 2, 0, 0, 710, 817]] # @ 0209
+#                   [0, 0, 0, 0, 0, 0, 0, 0, 0]]
     self.order_stage[5] = [self.order_stage[5], "BS"]
 #    self.orders = [[1, 0, 0, 0, 2, 0, 0, 1, 1021], # @ 0006
 #                   [2, 3, 0, 0, 2, 0, 0, 1, 1021], # @ 0006
