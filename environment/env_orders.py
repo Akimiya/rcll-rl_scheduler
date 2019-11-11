@@ -338,6 +338,7 @@ class env_rcll():
                 at_time = E_delivery - order[-2] - length_scaling # we make sure we scale inside the window
                 comp_bonus = width_scaling / (1 + math.exp((ratio_scaling * at_time) / length_scaling)) - width_scaling/2
                 
+                # add to the reward
                 E_reward += comp_bonus
             
             
@@ -624,23 +625,6 @@ if __name__ == "__main__":
     print("Please import the file.")
 #    assert False
     
-    
-    # testing code
-    
-    # deactivate numpy scientific notation printing..
-#    np.set_printoptions(suppress=True)
-#    
-#    
-#    obs = get_observation(self)
-#    get_observation(self)[0][:, :2].tolist() + [get_observation(self)[1][:2]]
-    get_observation(self)[0].tolist() + [get_observation(self)[1]]
-    
-    
-    
-    
-    
-    
-    
     #### for debug scenario
     self = env_rcll()
     self.reset()
@@ -672,3 +656,23 @@ if __name__ == "__main__":
                      'DS': field_pos(2.5, 4.5)}
     self.ring_additional_bases = [3, 1, 2, 4]
     self.rings = [[3, 4], [1, 2]]
+    
+    
+    
+    
+    # testing code
+    
+    # deactivate numpy scientific notation printing..
+#    np.set_printoptions(suppress=True)
+#    
+#    
+#    obs = get_observation(self)
+#    get_observation(self)[0][:, :2].tolist() + [get_observation(self)[1][:2]]
+    get_observation(self)[0].tolist() + [get_observation(self)[1]]
+    
+    
+    
+    
+    
+    
+    
