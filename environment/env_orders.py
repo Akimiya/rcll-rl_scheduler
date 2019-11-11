@@ -9,6 +9,7 @@ import numpy as np
 import math
 from enum import Enum
 from copy import deepcopy # more performant then dict()
+import matplotlib.pyplot as plt
 
 # TODO: need to make refbox_comm into a class or uglily import it to get running globals
 
@@ -278,8 +279,10 @@ class env_rcll():
             # accumulate time; assume 1m per 2s
             E_time += distance * 2 + wait
             
-            # accumulate reward
-            E_reward += reward
+            # accumulate reward, as long game not over (expected)
+            # TODO: scale or consider variance for more fluent drop to 0 points (as we "might" make it in time)
+            if E_time + self.time <= 1021:
+                E_reward += reward
             
             # save the step to next machine
             if E_time_next == None:
@@ -625,6 +628,7 @@ if __name__ == "__main__":
     print("Please import the file.")
 #    assert False
     
+    
     #### for debug scenario
     self = env_rcll()
     self.reset()
@@ -657,7 +661,7 @@ if __name__ == "__main__":
     self.ring_additional_bases = [3, 1, 2, 4]
     self.rings = [[3, 4], [1, 2]]
     
-    
+    assert False
     
     
     # testing code
@@ -668,9 +672,33 @@ if __name__ == "__main__":
 #    
 #    obs = get_observation(self)
 #    get_observation(self)[0][:, :2].tolist() + [get_observation(self)[1][:2]]
-    get_observation(self)[0].tolist() + [get_observation(self)[1]]
+#    get_observation(self)[0] + [get_observation(self)[1]]
+
+    
+    observations = []
+    for i in range(1, 1022):
+        self.time = i
+        
+        observations.append(get_observation(self))
+        
+    t_rewards = []
+    for obs in observations:
+        t_rewards.append(obs[0][:, 0].tolist() + [obs[1][0]])
+    t_rewards = np.array(t_rewards).T.tolist()
     
     
+    t = range(1,1022)
+    labels = [r'$O_{}$'.format(x) for x in range(1,10)]
+    
+    plt.figure(figsize=(15,7))
+    for y, l in zip(t_rewards, labels):
+        plt.plot(t, y, label=l)
+    
+    plt.grid(True)
+    plt.xlabel('time')
+    plt.ylabel('reward')
+    plt.legend(loc='best')
+    plt.show()
     
     
     
