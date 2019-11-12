@@ -373,8 +373,8 @@ class env_rcll():
                                  E_time + E_time3,
                                  E_time_next]
                 
-#                E_time += E_time2 # TODO: does not work, as cant do one too early
-#                E_reward += E_reward2 # TODO: investigate gap in jump
+                E_time += E_time2 # TODO: does not work, as cant do one too early
+                E_reward += E_reward2 # TODO: investigate gap in jump
                 # when the first product is finished we have next the intermediate of the second
                 if current_stage == "FIN":
                     E_reward_next = E_reward_next2
