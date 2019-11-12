@@ -117,32 +117,45 @@ class env_rcll():
         # TODO: return normalized parameters
         self.normalize = normalize
         
-    def stage_to_machine(self, stage, ring_col=None, cap_col=None):
+    def stage_to_machine(self, stage, order):
         ##### correct processing_order to actual next machine
+        ring_col = None
+        ring_pos = None
+        ring_num = None
+        to_machine = None
+        
         # decide which RS
         if stage[0] == 'R':
+            # deduct ring parameters
+            ring_pos = int(stage[1])
+            ring_col = order[ring_pos]
+            ring_num = 3 - order[1:4].count(0)
+            
             # figure out where we can get it
             if ring_col in self.rings[0]:
                 to_machine = "RS1"
             elif ring_col in self.rings[1]:
                 to_machine = "RS2"
+            elif ring_col == 0:
+                return to_machine, ring_pos, ring_col, ring_num
             else:
-                assert False and "No such ring color"
+                assert False and "No such ring color!"
                 
         # decide which CS
         elif stage == "CS":
+            cap_col = order[4]
             if cap_col == 2:
                 to_machine = "CS1"
             elif cap_col == 1:
                 to_machine = "CS2"
             else:
-                assert False and "No such cap color"
+                assert False and "No such cap color!"
                 
         # otherwise stage matches machine name
         else:
             to_machine = stage
         
-        return to_machine
+        return to_machine, ring_pos, ring_col, ring_num
     
     def expectation_order(self, order, current_stage, current_pos, delay=None, processing=None):
         E_time = 0 if delay == None else delay # delay will be 0 if first product is FIN
@@ -163,25 +176,15 @@ class env_rcll():
             wait = 0 # machine processing time + arm-movement delay
             reward = 0 # reward for that step
             # for safety of reusing
-            ring_col = None
-            ring_pos = None
             need_bases = None
             missing_bases = None
             next_pos = None
             
-            
-            # deduct ring parameters
-            if stage[0] == 'R':
-                ring_pos = int(stage[1])
-                ring_col = order[ring_pos]
-                ring_num = 3 - order[1:4].count(0)
-                
-                # check if it has ring on this slot; otherwise it is an non-existent processing step
-                if ring_col == 0:
-                    continue
-            
             # correct processing_order to actual next machine
-            to_machine, ring_pos, ring_col, ring_num = self.stage_to_machine(stage, ring_col, order[4])
+            to_machine, ring_pos, ring_col, ring_num = self.stage_to_machine(stage, order)
+            # check if it has ring on this slot; otherwise it is an non-existent processing step
+            if ring_col == 0:
+                continue
             
             ##### get specific machine position and compute travling distance
             next_pos = self.machines[to_machine]
@@ -531,6 +534,9 @@ class env_rcll():
         
         
         ##### UPDATING PRODUCT
+        # correct processing_order to actual next machine
+        to_machine, ring_pos, ring_col, ring_num = self.stage_to_machine(stage, order)
+        
         if stage == "BS":
             # implying applying the base by transition to next stage
             self.order_stage[action] = self.processing_order[self.processing_order.index(stage) + 1]
@@ -539,6 +545,7 @@ class env_rcll():
             current_pos = self.robots[0]
             
             # update the robots position
+            
             
             next_pos = self.machines[to_machine]
 #                print("at: {}, to: {}, distance: {}".format(current_pos, next_pos, current_pos.distance(next_pos)))
