@@ -367,20 +367,24 @@ class env_rcll():
                 # case 2) take one from the SS; consider it as extra sub-order
                 E_time3, E_time_next3, E_reward3, E_reward_next3 = self.expectation_order(order, "SS", self.machines["DS"], E_time, ["SS", "DS", "FIN"])
                 
-                # assemble the extra vector before updating E's; delivery window already present in other
-                E_multi_order = [E_reward + E_reward3, 
-                                 E_reward_next,
-                                 E_time + E_time3,
-                                 E_time_next]
-                
-                E_time += E_time2 # TODO: does not work, as cant do one too early
-                E_reward += E_reward2 # TODO: investigate gap in jump
-                # when the first product is finished we have next the intermediate of the second
-                if current_stage == "FIN":
-                    E_reward_next = E_reward_next2
-                    E_time_next = E_time_next2
-                    E_multi_order[1] = E_reward_next3
-                    E_multi_order[3] = E_time_next3
+                # only consider the 2nd order when we still have time to do the mandratory one!
+                # until then we consider 1st order to be delivered on time
+                if self.time + E_time < order[-2]:
+                    # assemble the extra vector before updating E's; delivery window feature already present in other
+                    E_multi_order = [E_reward + E_reward3, 
+                                     E_reward_next,
+                                     E_time + E_time3,
+                                     E_time_next]
+                    
+                    E_time += E_time2
+                    E_reward += E_reward2
+                    
+                    # when the first product is finished we have next the intermediate of the second
+                    if current_stage == "FIN":
+                        E_reward_next = E_reward_next2
+                        E_time_next = E_time_next2
+                        E_multi_order[1] = E_reward_next3
+                        E_multi_order[3] = E_time_next3
             
             
             ##### for each order we add to vector
@@ -715,7 +719,7 @@ if __name__ == "__main__":
     
     plt.figure(figsize=(15,7))
     plt.grid(True)
-    plt.plot(t_rewards[5])
+    plt.plot(t_rewards[8])
     
     
     
