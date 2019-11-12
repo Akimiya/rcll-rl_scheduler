@@ -347,7 +347,7 @@ class env_rcll():
                 # compute bonus points for competitive
                 ratio_scaling = 3.53 # selected as a constant so that we get 3/4 of points at 1/4 window
                 tmp = 1 + math.exp(ratio_scaling)
-                width_scaling = (-20 * tmp) / (2 - tmp) # so that we have about +-10 on each side; exact=20.82640446380697375952
+                width_scaling = (-20 * tmp) / (2 - tmp) # so that we have about +-10 on each side
                 length_scaling = (order[-1] - order[-2]) / 2
                 
                 at_time = E_delivery - order[-2] - length_scaling # we make sure we scale inside the window
@@ -367,15 +367,18 @@ class env_rcll():
                 # case 2) take one from the SS; consider it as extra sub-order
                 E_time3, E_time_next3, E_reward3, E_reward_next3 = self.expectation_order(order, "SS", self.machines["DS"], E_time, ["SS", "DS", "FIN"])
                 
+                # assemble the extra vector before updating E's; delivery window feature already present in other
+                E_multi_order = [E_reward, 
+                                 E_reward_next,
+                                 E_time,
+                                 E_time_next]
+                
                 # only consider the 2nd order when we still have time to do the mandratory one!
                 # until then we consider 1st order to be delivered on time
                 if self.time + E_time < order[-2]:
-                    # assemble the extra vector before updating E's; delivery window feature already present in other
-                    E_multi_order = [E_reward + E_reward3, 
-                                     E_reward_next,
-                                     E_time + E_time3,
-                                     E_time_next]
-                    
+                    # update respective rewards as we are on time for 2nd order
+                    E_multi_order[0] += E_reward3
+                    E_multi_order[2] += E_time3
                     E_time += E_time2
                     E_reward += E_reward2
                     
@@ -707,10 +710,11 @@ if __name__ == "__main__":
     
     t = range(1,1022)
     labels = [r'$O_{}$'.format(x) for x in range(1,10)]
+    o = 2
     
-    plt.figure(figsize=(15,7))
-    for y, l in zip(t_rewards, labels):
-        plt.plot(t, y, label=l)
+    plt.figure(figsize=(30,14))
+    for y, l in zip(t_rewards[o:], labels[o:]):
+        plt.plot(t, y, label=l, linewidth=3, alpha=0.9)
     plt.grid(True)
     plt.xlabel('time')
     plt.ylabel('reward')
