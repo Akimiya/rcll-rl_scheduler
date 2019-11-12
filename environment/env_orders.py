@@ -105,6 +105,10 @@ class env_rcll():
         # order of steps needed to fulfill an oder
         self.processing_order = ["BS", "R1", "R2", "R3", "CS", "DS", "FIN"]
         
+        # distribution for movement
+        self.MOVE_MEAN = 2
+        self.MOVE_VAR = 0.4
+        
         # additional time factor for time lost on grapping products with machine arm
         # 2017 Carologistics needs 68sec for adjusting grapping and plaing on CS
         # they need 45sec for grap, move and place products (10~30sec move and adjust)
@@ -259,7 +263,7 @@ class env_rcll():
                 wait += 30
                 
                 # comsidering delivery window; accounting for next E_time update
-                E_delivery = self.time + E_time + distance * 2 + wait
+                E_delivery = self.time + E_time + distance * self.MOVE_MEAN + wait
                 if E_delivery < order[-2]:
                     reward += 1 # wrong delivery
                 elif E_delivery < order[-1]:
@@ -277,12 +281,13 @@ class env_rcll():
                 reward -= 10 # listed cost
             
             # accumulate time; assume 1m per 2s
-            E_time += distance * 2 + wait
+            E_time += distance * self.MOVE_MEAN + wait
             
             # accumulate reward, as long game not over (expected)
+            E_reward += reward
             # TODO: scale or consider variance for more fluent drop to 0 points (as we "might" make it in time)
-            if E_time + self.time <= 1021:
-                E_reward += reward
+            if self.time + E_time > 1021:
+                E_reward = 0
             
             # save the step to next machine
             if E_time_next == None:
@@ -345,6 +350,8 @@ class env_rcll():
                 E_reward += comp_bonus
             
             
+            # TODO: consider the case 1) in E_time influencing E_reward, as both need to happen in delivery window
+            # TODO: case 2) also not working properly
             # consider if order need mupltiple products
             # we will definitely need to build one order normally; other can be normal or from SS
             if order[5] == 1:
@@ -359,8 +366,8 @@ class env_rcll():
                                  E_time + E_time3,
                                  E_time_next]
                 
-                E_time += E_time2
-                E_reward += E_reward2
+                E_time += E_time2 # TODO: does not work, as cant do one too early
+                E_reward += E_reward2 # TODO: investigate gap in jump
                 # when the first product is finished we have intermediate second
                 if current_stage == "FIN":
                     E_reward_next = E_reward_next2
@@ -693,14 +700,15 @@ if __name__ == "__main__":
     plt.figure(figsize=(15,7))
     for y, l in zip(t_rewards, labels):
         plt.plot(t, y, label=l)
-    
     plt.grid(True)
     plt.xlabel('time')
     plt.ylabel('reward')
     plt.legend(loc='best')
     plt.show()
     
-    
+    plt.figure(figsize=(15,7))
+    plt.grid(True)
+    plt.plot(t_rewards[8])
     
     
     
