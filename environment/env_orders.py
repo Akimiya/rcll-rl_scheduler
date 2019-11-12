@@ -96,7 +96,7 @@ class env_rcll():
         self.INCORRECT_STEP = -10
         self.FINISHED_ORDER = 20
         
-        self.ACTION_SPACE_SIZE = 3 + 4 + 2 + 1
+        self.ACTION_SPACE_SIZE = 8 + 1 # 8 orders plus one double slot for amounted order
         self.TOTAL_NUM_ORDERS = 9 # warning: currently does not scale all
         
         # there are 3 rings, so 4 repeats
@@ -116,6 +116,33 @@ class env_rcll():
         
         # TODO: return normalized parameters
         self.normalize = normalize
+        
+    def stage_to_machine(self, stage, ring_col=None, cap_col=None):
+        ##### correct processing_order to actual next machine
+        # decide which RS
+        if stage[0] == 'R':
+            # figure out where we can get it
+            if ring_col in self.rings[0]:
+                to_machine = "RS1"
+            elif ring_col in self.rings[1]:
+                to_machine = "RS2"
+            else:
+                assert False and "No such ring color"
+                
+        # decide which CS
+        elif stage == "CS":
+            if cap_col == 2:
+                to_machine = "CS1"
+            elif cap_col == 1:
+                to_machine = "CS2"
+            else:
+                assert False and "No such cap color"
+                
+        # otherwise stage matches machine name
+        else:
+            to_machine = stage
+        
+        return to_machine
     
     def expectation_order(self, order, current_stage, current_pos, delay=None, processing=None):
         E_time = 0 if delay == None else delay # delay will be 0 if first product is FIN
@@ -140,13 +167,11 @@ class env_rcll():
             ring_pos = None
             need_bases = None
             missing_bases = None
-            cap_col = None
             next_pos = None
             
-            ##### correct processing_order to actual next machine
-            # decide which RS
+            
+            # deduct ring parameters
             if stage[0] == 'R':
-                # find which ring
                 ring_pos = int(stage[1])
                 ring_col = order[ring_pos]
                 ring_num = 3 - order[1:4].count(0)
@@ -154,25 +179,9 @@ class env_rcll():
                 # check if it has ring on this slot; otherwise it is an non-existent processing step
                 if ring_col == 0:
                     continue
-                
-                # figure out where we can get it
-                if ring_col in self.rings[0]:
-                    to_machine = "RS1"
-                elif ring_col in self.rings[1]:
-                    to_machine = "RS2"
-                    
-            # decide which CS
-            elif stage == "CS":
-                cap_col = order[4]
-                if cap_col == 2:
-                    to_machine = "CS1"
-                elif cap_col == 1:
-                    to_machine = "CS2"
-                    
-            # otherwise stage matches machine name
-            else:
-                to_machine = stage
             
+            # correct processing_order to actual next machine
+            to_machine, ring_pos, ring_col, ring_num = self.stage_to_machine(stage, ring_col, order[4])
             
             ##### get specific machine position and compute travling distance
             next_pos = self.machines[to_machine]
@@ -510,31 +519,63 @@ class env_rcll():
     def step(self, action):
         self.episode_step += 1
         done = False
-        
-        # action conversion for default networks with actions 0 to 9
-        if action >= 9:
-            action = 40
-        elif action >= 7:
-            action = 30 + action - 7 + 1
-        elif action >= 3:
-            action = 20 + action - 3 + 1
-        elif action >= 0:
-            action = 10 + action + 1
-            
+
         # TODO: make products appear randomly on time for specified order slots; account quantity & characteristics
+        # TODO: update for multiple robots
+        
+        ### we assume selecting from one of the orders and computing/returning real-world-like intermediate step
+        assert action >= 0 and action <= self.ACTION_SPACE_SIZE - 1
+        order = self.orders[action]
+        stage = self.order_stage[action]
+        # TODO: for the double orders
+        
         
         ##### UPDATING PRODUCT
-        # format is a  two digit integer, first the category, second the color
-        assert action >= 0 and action <= self.TOTAL_NUM_ORDERS
-        action_type = int(action / 10)
-        action_color = action % 10
+        if stage == "BS":
+            # implying applying the base by transition to next stage
+            self.order_stage[action] = self.processing_order[self.processing_order.index(stage) + 1]
+            
+            # compute actual time spent
+            current_pos = self.robots[0]
+            
+            # update the robots position
+            
+            next_pos = self.machines[to_machine]
+#                print("at: {}, to: {}, distance: {}".format(current_pos, next_pos, current_pos.distance(next_pos)))
+            distance += current_pos.distance(next_pos)
+            current_pos = next_pos # we now made the step to next machine
+            
+            # assume each step involves grappign and plaing a product at least once
+            wait += self.grap_and_place_delay
+            
+            
+            wait += 5 # estimate/assumption
+            
+            # no reward for getting a base
+            reward += 0
+            
+            pass
+            
+        elif stage == "R1":
+            pass
+            
+        elif stage == "R2":
+            pass    
         
-        # TODO: test without pipeline converge?
-        # TODO: random delay model, best a function
-        # applying the base
+        elif stage == "R3":
+            pass
+                    
+        elif stage == "CS":
+            pass
+            
+        elif stage == "DS":
+            pass
+            
+        elif stage == "SS":
+            pass
+        
+        
         if self.order_stage == 0 and action_type == 1:
-            # updating tracking
-            self.pipeline[0] = action_color
             
             found = False
             for idx, order in enumerate(self.orders):
@@ -712,7 +753,7 @@ if __name__ == "__main__":
     labels = [r'$O_{}$'.format(x) for x in range(1,10)]
     o = 2
     
-    plt.figure(figsize=(30,14))
+    plt.figure(figsize=(15,7))
     for y, l in zip(t_rewards[o:], labels[o:]):
         plt.plot(t, y, label=l, linewidth=3, alpha=0.9)
     plt.grid(True)
