@@ -117,19 +117,17 @@ class env_rcll():
         # TODO: return normalized parameters
         self.normalize = normalize
     
-    def expectation_order(self, order, current_stage, current_pos, processing=None):
-        E_time = 0
+    def expectation_order(self, order, current_stage, current_pos, delay=None, processing=None):
+        E_time = 0 if delay == None else delay # delay will be 0 if first product is FIN
         E_reward = 0
         E_time_next = None
         E_reward_next = None
         
         ##### track machine path, looping over future machines
         if processing == None:
-            cont = self.processing_order.index(current_stage)
             processing = self.processing_order
-        else:
-            cont = processing.index(current_stage)
-            
+        cont = processing.index(current_stage)
+        
         for stage in processing[cont:]:
             if stage == "FIN":
                 continue
@@ -265,7 +263,11 @@ class env_rcll():
                 # comsidering delivery window; accounting for next E_time update
                 E_delivery = self.time + E_time + distance * self.MOVE_MEAN + wait
                 if E_delivery < order[-2]:
-                    reward += 1 # wrong delivery
+                    # function call without set delay for first call for order 1 out of 2
+                    if order[5] == 1 and delay == None:
+                        reward += 20 # assume we will deliver in time, if we start earlier
+                    else:
+                        reward += 1 # wrong delivery => default
                 elif E_delivery < order[-1]:
                     reward += 20 # (correct) delivery
                 elif E_delivery < order[-1] + 10:
@@ -296,6 +298,11 @@ class env_rcll():
                 E_reward_next = E_reward
             
 #            print("E_time: {} | E_time_next: {} | E_reward: {} | E_reward_next: {}".format(E_time, E_time_next, E_reward, E_reward_next))
+        
+        # based on Rulebook Ch. 5.8, we get only points for stages which are not later then the delivery window
+        if self.time > order[-1]:
+            E_reward = 0
+            E_reward_next = 0
         
         return E_time, E_time_next, E_reward, E_reward_next
     
@@ -356,9 +363,9 @@ class env_rcll():
             # we will definitely need to build one order normally; other can be normal or from SS
             if order[5] == 1:
                 # case 1) we make the whole process again starting from last machine
-                E_time2, E_time_next2, E_reward2, E_reward_next2 = self.expectation_order(order, current_stage2, self.machines["DS"])
+                E_time2, E_time_next2, E_reward2, E_reward_next2 = self.expectation_order(order, current_stage2, self.machines["DS"], E_time)
                 # case 2) take one from the SS; consider it as extra sub-order
-                E_time3, E_time_next3, E_reward3, E_reward_next3 = self.expectation_order(order, "SS", self.machines["DS"], ["SS", "DS", "FIN"])
+                E_time3, E_time_next3, E_reward3, E_reward_next3 = self.expectation_order(order, "SS", self.machines["DS"], E_time, ["SS", "DS", "FIN"])
                 
                 # assemble the extra vector before updating E's; delivery window already present in other
                 E_multi_order = [E_reward + E_reward3, 
@@ -366,9 +373,9 @@ class env_rcll():
                                  E_time + E_time3,
                                  E_time_next]
                 
-                E_time += E_time2 # TODO: does not work, as cant do one too early
-                E_reward += E_reward2 # TODO: investigate gap in jump
-                # when the first product is finished we have intermediate second
+#                E_time += E_time2 # TODO: does not work, as cant do one too early
+#                E_reward += E_reward2 # TODO: investigate gap in jump
+                # when the first product is finished we have next the intermediate of the second
                 if current_stage == "FIN":
                     E_reward_next = E_reward_next2
                     E_time_next = E_time_next2
@@ -708,7 +715,7 @@ if __name__ == "__main__":
     
     plt.figure(figsize=(15,7))
     plt.grid(True)
-    plt.plot(t_rewards[8])
+    plt.plot(t_rewards[5])
     
     
     
