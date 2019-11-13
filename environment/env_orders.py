@@ -89,15 +89,8 @@ class field_pos():
 
 class env_rcll():
     def __init__(self, normalize=False):
-        # rewards
-        self.SENSELESS_ACTION = -20
-        self.CORRECT_STEP = 10
-        self.DISCART_ORDER = -2
-        self.INCORRECT_STEP = -10
-        self.FINISHED_ORDER = 20
-        
         self.ACTION_SPACE_SIZE = 8 + 1 # 8 orders plus one double slot for amounted order
-        self.TOTAL_NUM_ORDERS = 9 # warning: currently does not scale all
+        self.TOTAL_NUM_ORDERS = 9 # warning: currently does not scaling all
         
         # there are 3 rings, so 4 repeats
         self.ORDER_NORM_FACTOR = [3, 4, 4, 4, 2, 1, 1, 1021, 1021]
@@ -105,17 +98,29 @@ class env_rcll():
         # order of steps needed to fulfill an oder
         self.processing_order = ["BS", "R1", "R2", "R3", "CS", "DS", "FIN"]
         
+        # TODO: return normalized parameters
+        self.normalize = normalize
+        
+        # rewards
+        self.SENSELESS_ACTION = -20
+        self.CORRECT_STEP = 10
+        self.DISCART_ORDER = -2
+        self.INCORRECT_STEP = -10
+        self.FINISHED_ORDER = 20
+        
+        ############################ PROBABILITIES ############################
         # distribution for movement
-        self.MOVE_MEAN = 2
-        self.MOVE_VAR = 0.4
+        self.move_mean = 2
+        self.move_var = 0.4
         
         # additional time factor for time lost on grapping products with machine arm
         # 2017 Carologistics needs 68sec for adjusting grapping and plaing on CS
         # they need 45sec for grap, move and place products (10~30sec move and adjust)
-        self.grap_and_place_delay = 20
+        # Rayleigh distribution may also be an option
+        self.grap_and_place_mean = 30
+        self.grap_and_place_var = 7
         
-        # TODO: return normalized parameters
-        self.normalize = normalize
+        
         
     def stage_to_machine(self, stage, order):
         ##### correct processing_order to actual next machine
@@ -193,7 +198,7 @@ class env_rcll():
             current_pos = next_pos # we now made the step to next machine
             
             # assume each step involves grappign and plaing a product at least once
-            wait += self.grap_and_place_delay
+            wait += self.grap_and_place_mean
             
             ###### additional wait time per machine; assumed after we arrive and do process there
             ###### computation of reward for this step
@@ -232,7 +237,7 @@ class env_rcll():
                     extra = current_pos.distance(self.machines["BS"]) * 2 # 2 for back-forth
                     
                     distance += extra * missing_bases
-                    wait += self.grap_and_place_delay * missing_bases # assumption on lost time grapping bases
+                    wait += self.grap_and_place_mean * missing_bases # assumption on lost time grapping bases
                     
                     # additional points for base feeded into RS
                     reward += 2 * missing_bases
@@ -259,7 +264,7 @@ class env_rcll():
                 distance_rs1 = current_pos.distance(self.machines["RS1"])
                 distance_rs2 = current_pos.distance(self.machines["RS2"])
                 wait += min(distance_rs1, distance_rs2) * 2 # 2 for back-forth
-                wait += self.grap_and_place_delay # assumption on lost time grapping clear bases
+                wait += self.grap_and_place_mean # assumption on lost time grapping clear bases
                 
                 # reward for buffering a cap
                 reward += 2
@@ -273,7 +278,7 @@ class env_rcll():
                 wait += 30
                 
                 # comsidering delivery window; accounting for next E_time update
-                E_delivery = self.time + E_time + distance * self.MOVE_MEAN + wait
+                E_delivery = self.time + E_time + distance * self.move_mean + wait
                 if E_delivery < order[-2]:
                     # function call without set delay for first call for order 1 out of 2
                     if order[5] == 1 and delay == None:
@@ -295,7 +300,7 @@ class env_rcll():
                 reward -= 10 # listed cost
             
             # accumulate time; assume 1m per 2s
-            E_time += distance * self.MOVE_MEAN + wait
+            E_time += distance * self.move_mean + wait
             
             # accumulate reward, as long game not over (expected)
             E_reward += reward
@@ -519,12 +524,22 @@ class env_rcll():
 
         return self.get_observation()
 
+    def get_normal(self, mean, var):
+        var = np.random.normal(mean, var)
+        
+        # bound the lower end to greater 0 preventing errors
+        if var < 0:
+            var = 0
+        
+        return var
+
     def step(self, action):
         self.episode_step += 1
         done = False
 
         # TODO: make products appear randomly on time for specified order slots; account quantity & characteristics
         # TODO: update for multiple robots
+        # TODO: currently assume no activity during the avoidable wait time
         
         ### we assume selecting from one of the orders and computing/returning real-world-like intermediate step
         assert action >= 0 and action <= self.ACTION_SPACE_SIZE - 1
@@ -533,35 +548,33 @@ class env_rcll():
         # TODO: for the double orders
         
         
-        ##### UPDATING PRODUCT
         # correct processing_order to actual next machine
         to_machine, ring_pos, ring_col, ring_num = self.stage_to_machine(stage, order)
         
         if stage == "BS":
-            # implying applying the base by transition to next stage
+            ### implying applying the base by transition to next stage
             self.order_stage[action] = self.processing_order[self.processing_order.index(stage) + 1]
             
-            # compute actual time spent
+            ### compute actual time spent
             current_pos = self.robots[0]
-            
-            # update the robots position
-            
-            
             next_pos = self.machines[to_machine]
-#                print("at: {}, to: {}, distance: {}".format(current_pos, next_pos, current_pos.distance(next_pos)))
-            distance += current_pos.distance(next_pos)
-            current_pos = next_pos # we now made the step to next machine
+            distance = current_pos.distance(next_pos)
             
-            # assume each step involves grappign and plaing a product at least once
-            wait += self.grap_and_place_delay
+            # now act probabilistic! later substitute with real data!
+            # unavoidable time spend on moving to machine
+            time_driving = self.get_normal(distance * self.move_mean, distance * self.move_var)
+            # unavoidable time consumption; e.g. grap, place
+            time_mechanical = self.get_normal(self.grap_and_place_mean, self.grap_and_place_var)
+            # avoidable time spent on machine internal processing
+            time_wait = 5 # estimate/assumption
             
+            self.time += time_driving + time_mechanical + time_wait
             
-            wait += 5 # estimate/assumption
+            ### update the robots position, implying it drove there
+            self.robots[0] = next_pos
             
             # no reward for getting a base
-            reward += 0
-            
-            pass
+            reward = 0
             
         elif stage == "R1":
             pass
