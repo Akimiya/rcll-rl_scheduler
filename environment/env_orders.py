@@ -116,11 +116,18 @@ class env_rcll():
         # additional time factor for time lost on grapping products with machine arm
         # 2017 Carologistics needs 68sec for adjusting grapping and plaing on CS
         # they need 45sec for grap, move and place products (10~30sec move and adjust)
-        # Rayleigh distribution may also be an option
+        # Rayleigh (or Chi) distribution may also be an option
         self.grap_and_place_mean = 30
         self.grap_and_place_var = 7
         
-        
+        # each machine has its own processing time; some improvised gaussian format: [mean, var]
+        self.machine_times = {
+                "BS": [5, 0.15], # estimate/assumption
+                "RS": [40, 60], # official low and high
+                "CS": [15, 25], # official low and high
+                "DS": [20, 40], # official low and high
+                "SS": [5, 0.15] # estimate/assumption
+                }
         
     def stage_to_machine(self, stage, order):
         ##### correct processing_order to actual next machine
@@ -203,13 +210,13 @@ class env_rcll():
             ###### additional wait time per machine; assumed after we arrive and do process there
             ###### computation of reward for this step
             if to_machine == "BS":
-                wait += 5 # estimate/assumption
+                wait += self.machine_times["BS"][0]
                 
                 # no reward for getting a base
                 reward += 0
                 
             elif to_machine == "RS1" or to_machine == "RS2":
-                wait += 50 # mean official delay
+                wait += self.machine_times["RS"][0] # mean official delay
                 
                 ### consider additional bases and reward
                 # figure out if current ring need additional bases
@@ -256,7 +263,7 @@ class env_rcll():
                         
             elif to_machine == "CS1" or to_machine == "CS2":
                 # additional time to buffer
-                wait += 20 # for buffer cap first
+                wait += self.machine_times["CS"][0] # for buffer cap first
                 wait += 3 * 2 # traveling around the machine
                 
                 # dispose to nearest RS for now
@@ -270,12 +277,12 @@ class env_rcll():
                 reward += 2
                 
                 # mount cap
-                wait += 20
+                wait += self.machine_times["CS"][0]
                 # reward fo mount cap
                 reward += 10
                 
             elif to_machine == "DS":
-                wait += 30
+                wait += self.machine_times["DS"][0]
                 
                 # comsidering delivery window; accounting for next E_time update
                 E_delivery = self.time + E_time + distance * self.move_mean + wait
@@ -555,19 +562,20 @@ class env_rcll():
             ### implying applying the base by transition to next stage
             self.order_stage[action] = self.processing_order[self.processing_order.index(stage) + 1]
             
-            ### compute actual time spent
+            ### compute and apply actual time spent
             current_pos = self.robots[0]
             next_pos = self.machines[to_machine]
             distance = current_pos.distance(next_pos)
             
             # now act probabilistic! later substitute with real data!
-            # unavoidable time spend on moving to machine
+            # unavoidable time spend on moving to machine; adding (thus multiplying) up random varibles per meter
             time_driving = self.get_normal(distance * self.move_mean, distance * self.move_var)
             # unavoidable time consumption; e.g. grap, place
             time_mechanical = self.get_normal(self.grap_and_place_mean, self.grap_and_place_var)
             # avoidable time spent on machine internal processing
-            time_wait = 5 # estimate/assumption
+            time_wait = self.get_normal(self.machine_times["BS"][0], self.machine_times["BS"][1])
             
+            # apply the real time passed
             self.time += time_driving + time_mechanical + time_wait
             
             ### update the robots position, implying it drove there
@@ -699,9 +707,13 @@ class env_rcll():
             done = True
             
         
-        # we stop if we try for too long
-        if self.episode_step >= 11:
+        # we are finished with the episode at the end of the game
+        if self.time >= 1021:
             done = True
+        
+        # we do not award points for steps which would have finished too late
+        if self.time > 1021:
+            reward = 0
         
         return self.get_observation(), reward, done
 
