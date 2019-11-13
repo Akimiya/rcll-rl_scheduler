@@ -558,28 +558,24 @@ class env_rcll():
         # correct processing_order to actual next machine
         to_machine, ring_pos, ring_col, ring_num = self.stage_to_machine(stage, order)
         
+        # positional targets
+        current_pos = self.robots[0]
+        next_pos = self.machines[to_machine]
+            
+        ### update the robots position, implying it drove there
+        self.robots[0] = next_pos
+        
+        # now act probabilistic! later substitute with real data!
+        # unavoidable time spend on moving to machine; adding (thus multiplying) up random varibles per meter
+        distance = current_pos.distance(next_pos)
+        time_driving = self.get_normal(distance * self.move_mean, distance * self.move_var)
+        # unavoidable time consumption; e.g. grap, place
+        time_mechanical = self.get_normal(self.grap_and_place_mean, self.grap_and_place_var)
+        
+        
         if stage == "BS":
-            ### implying applying the base by transition to next stage
-            self.order_stage[action] = self.processing_order[self.processing_order.index(stage) + 1]
-            
-            ### compute and apply actual time spent
-            current_pos = self.robots[0]
-            next_pos = self.machines[to_machine]
-            distance = current_pos.distance(next_pos)
-            
-            # now act probabilistic! later substitute with real data!
-            # unavoidable time spend on moving to machine; adding (thus multiplying) up random varibles per meter
-            time_driving = self.get_normal(distance * self.move_mean, distance * self.move_var)
-            # unavoidable time consumption; e.g. grap, place
-            time_mechanical = self.get_normal(self.grap_and_place_mean, self.grap_and_place_var)
             # avoidable time spent on machine internal processing
             time_wait = self.get_normal(self.machine_times["BS"][0], self.machine_times["BS"][1])
-            
-            # apply the real time passed
-            self.time += time_driving + time_mechanical + time_wait
-            
-            ### update the robots position, implying it drove there
-            self.robots[0] = next_pos
             
             # no reward for getting a base
             reward = 0
@@ -603,109 +599,13 @@ class env_rcll():
             pass
         
         
-        if self.order_stage == 0 and action_type == 1:
-            
-            found = False
-            for idx, order in enumerate(self.orders):
-                if order[0] == action_color:
-                    reward = self.CORRECT_STEP
-                    self.doing_order.append(idx)
-                    found = True
-                    
-            if not found:
-                reward = self.INCORRECT_STEP
-                done = True
-            else:
-                self.order_stage = 1
-            
-            
-        # applying the ring
-        elif self.order_stage in [1, 2] and action_type == 2:
-            # find next free (=0) ring slot
-            if 0 in self.pipeline[1:4]:
-                free_ring = self.pipeline.index(0) # TODO: Need to track manuaally at which ring
-                self.pipeline[free_ring] = action_color
-            else:
-                # prelimary end if we have too many rings
-                reward = self.INCORRECT_STEP
-                done = True
-                return self.get_observation(), reward, done
-            
-            if self.order_stage == 1:
-                found = []
-                for idx in self.doing_order:
-                    if self.orders[idx][free_ring] == action_color:
-                        reward = self.CORRECT_STEP
-                        found.append(idx)
-                        
-                if not found:
-                    reward = self.INCORRECT_STEP
-                    done = True
-                else:
-                    self.doing_order[:] = found
-                    self.order_stage = 2 # have at least one ring
-                    
-                    # got another ring
-            elif self.order_stage == 2:
-                found = []
-                has_ring = []
-                for idx in self.doing_order:
-                    if self.orders[idx][free_ring] == action_color:
-                        reward = self.CORRECT_STEP
-                        found.append(idx)
-                    if self.orders[idx][free_ring] != 0:
-                        has_ring.append(idx)
-    
-                if not found:
-                    reward = self.INCORRECT_STEP
-    #                if not has_ring:
-                    done = True # as it is not recoverable from having too many rings
-                else:
-                    self.doing_order[:] = found
-            
-            
-        # applying the cap
-        elif self.order_stage == 2 and action_type == 3:
-            self.pipeline_cap = action_color
-            
-            
-            done = True # as it is not recoverable or finished
-            reward = self.INCORRECT_STEP # default to be overwritten
-            
-            tmp = []
-            for idx in self.doing_order:
-                if self.orders[idx][4] == action_color:
-                    # check is full order is complete, pipeline does not include cap
-                    for i, part in  enumerate(self.orders[idx][:-1]):
-                        if self.pipeline[i] == part:
-                            found = True # we want always this branch
-                        else:
-                            found = False
-                            break
-                    
-                    if found:
-                        reward = self.FINISHED_ORDER
-                        tmp.append(idx)
-                        break # if the complete check passes we leave completely
-                    
-            self.doing_order[:] = tmp
-            
-        # discarding the product
-        elif action_type == 4:
-            # TODO: needs to handle cases where it gets positive reward and discards indefinitely
-            self.order_stage = 0 # track what assembly step we are at
-            self.pipeline = [0] * 4
-            self.pipeline_cap = 0 # track cap seperately for each pipeline as not needed in state
-            self.doing_order = []
-            
-            reward = self.DISCART_ORDER
-            if self.episode_step >= 11:
-                done = True
-            return self.get_observation(), reward, done
+        ### implying applying the base by transition to next stage
+        self.order_stage[action] = self.processing_order[self.processing_order.index(stage) + 1]
         
-            reward = self.SENSELESS_ACTION
-            done = True
-            
+        ### apply the real time passed
+        self.time += time_driving + time_mechanical + time_wait
+        
+        
         
         # we are finished with the episode at the end of the game
         if self.time >= 1021:
