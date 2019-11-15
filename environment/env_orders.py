@@ -40,8 +40,8 @@ class field_pos():
 
 class env_rcll():
     def __init__(self, normalize=False):
-        self.ACTION_SPACE_SIZE = 8 + 1 # 8 orders plus one double slot for amounted order
-        self.TOTAL_NUM_ORDERS = 9 # warning: currently does not scaling all
+        self.TOTAL_NUM_ORDERS = 8 # warning: currently does not scale all
+        self.ACTION_SPACE_SIZE = self.TOTAL_NUM_ORDERS + 1 # plus one slot for double amount order
         
         # we create refbox-like behavoir by taking their parameters and functions; NEEDS UPDATE ON CHANGE
         # taken from the (deffacts orders) from facts.clp
@@ -135,23 +135,39 @@ class env_rcll():
             
         # the delivery window
         minimum_window = 120
-        if window >= 0:
-            start = int(np.random.uniform(window, 1020 - minimum_window))
-            end = int(np.random.uniform(start + minimum_window, 1020))
-            delivery_window = [start, end]
+        if type(window) == tuple:
+            delivery_window = [window[0], window[1]]
         else:
-            delivery_window = [0, 0] if fill else []
+            if window >= 0:
+                start = int(np.random.uniform(window, 1020 - minimum_window))
+                end = int(np.random.uniform(start + minimum_window, 1020))
+                delivery_window = [start, end]
+            else:
+                delivery_window = [0, 0] if fill else []
         
         return [base] + rings + [cap] + num_products + competitive + delivery_window
     
     
-    def update_ordrders(self):
+    def update_orders(self):
         """ take declarations for this game and update self.orders accordingly 
             the declerations are sorted by activation time """
         
-        for idx, dec in enumerate(self.order_declarations):
-            # 
-            if dec[0] < self.time:
+        for activate, oid, C, n, compet, delivery in self.order_declarations:
+            # checking activation time
+            if activate <= self.time:
+                if self.orders[oid - 1][0] != 0:
+                    continue # already defined
+                
+                # need always be equal making sure this function is called exactly on time for order
+                assert activate == self.time
+                assert n >= 1 and n <= 2
+                
+                self.orders[oid - 1] = self.create_order(C=C, fill=True, amount=n - 1, compet=compet, window=delivery)
+                
+            else:
+                # tracking when this function needs to be called next
+                self.orders_next_activation = activate
+                break
     
     def stage_to_machine(self, stage, order):
         """ correct processing_order to actual next machine """
@@ -562,32 +578,22 @@ class env_rcll():
                 competitive = 0
                 p.append(proba_competitive)
             
-            self.order_declarations.append([activate_at, oid, complexity, number, competitive, deliver_start, deliver_end])
+            self.order_declarations.append([activate_at, oid, complexity, number, competitive, (deliver_start, deliver_end)])
         
         # figure out if competitive; currently only one order is
         rnd = np.random.choice(np.arange(len(self.ORDER_PARAMETERS)), p=p)
-        self.order_declarations[rnd][-1] = 1
+        self.order_declarations[rnd][-2] = 1
         
         # we sort the list to have the order of appearance
         self.order_declarations.sort(key=lambda x: x[0])
 
-
-        # RefBox like behavoir (=distribution); creating full matrix
+        # create initial orders
         self.orders = [[0] * 9] * self.TOTAL_NUM_ORDERS
-        # id1 is C0 full window
-        self.orders[0] = self.create_order(C=0, fill=True)
-        self.orders[0][-1] = 1020
-        self.orders[0][-2] = 0
-        # id2 is C1 with a ring requiring additional base, full window
-        self.orders[1] = self.create_order(C=0, fill=True)
-        self.orders[1][1] = self.ring_additional_bases[int(np.random.uniform(0, 2))]
-        self.orders[1][-1] = 1020
-        self.orders[1][-2] = 0
-        # id4 is C3, window around 600+
-        self.orders[3] = self.create_order(C=3, fill=True, window=600)
+        self.orders_next_activation = 0
+        self.update_orders()
         
         # track what assembly step we are at
-        self.order_stage = ["BS"] * self.TOTAL_NUM_ORDERS
+        self.order_stage = ["BS"] * self.ACTION_SPACE_SIZE
 
 
         return self.get_observation()
@@ -681,12 +687,13 @@ class env_rcll():
 
 if __name__ == "__main__":
     print("Please import the file.")
-#    assert False
     
     
     #### for debug scenario
     self = env_rcll()
     self.reset()
+    
+    assert False
     self.orders = [[1, 0, 0, 0, 2, 0, 0, 0, 1020], # @ 0006
                    [2, 3, 0, 0, 2, 0, 0, 0, 1020], # @ 0006
                    [1, 4, 1, 0, 2, 0, 0, 847, 1008], # @ 0239
