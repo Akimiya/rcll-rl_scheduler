@@ -33,6 +33,32 @@ class field_pos():
     def distance(self, other):
         tmp = self - other
         return np.sqrt(tmp.x**2 + tmp.y**2)
+
+class RefBox_recreated():
+    def __init__(self, random):
+        # just in case we want same seed, we take randomness form the other module
+        self.random = random
+    
+    def randomize(self, my_list):
+        # custom used randomize runction from RefBox
+        l = len(my_list)
+        for _ in range(200):
+            a = self.random.randrange(l)
+            b = self.random.randrange(l)
+            tmp = my_list[a]
+            my_list[a] = my_list[b]
+            my_list[b] = tmp
+        return my_list
+    
+    def machine_init_randomize(self):
+        pass
+    
+    def game_parametrize(self):
+        ring_colors = self.randomize(list(range(1, 5)))
+        c_first_rings = ring_colors[:3]
+        x_first_ring = ring_colors[3]
+        c_counters = [0] * 3
+        
         
 
 class env_rcll():
@@ -495,17 +521,6 @@ class env_rcll():
     def reset(self):
         # utility parameters
         self.episode_step = 0
-        
-        # custom used randomize runction from RefBox
-        def randomize(my_list):
-            l = len(my_list)
-            for _ in range(200):
-                a = self.random.randrange(l)
-                b = self.random.randrange(l)
-                tmp = my_list[a]
-                my_list[a] = my_list[b]
-                my_list[b] = tmp
-            return my_list
 
         # current roboter position
         self.robots = [field_pos(4.5, 0.5), field_pos(5.5, 0.5), field_pos(6.5, 0.5)]
@@ -534,7 +549,7 @@ class env_rcll():
             self.machines["CS1"].x *= -1
         else:
             self.machines["CS2"].y *= -1
-
+        
 
         # defining additional ring bases
         # first needs 2 bases, 2nd one, 3rd and 4th zero
