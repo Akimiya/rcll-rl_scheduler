@@ -13,55 +13,6 @@ import matplotlib.pyplot as plt
 
 # TODO: need to make refbox_comm into a class or uglily import it to get running globals
 
-def create_order(C=-1, fill=False, amount=False, compet=False, window=-1):
-    # enum bases red = 1, black, silver
-    base = int(np.random.uniform(1, 4))
-    
-    # number of rings
-    if C == -1:
-        rnd = np.random.uniform()
-        if rnd <= 1 / 9:
-            num_rings = 3
-        elif rnd <= 2 / 9:
-            num_rings = 2
-        elif rnd <= 4 / 9:
-            num_rings = 1
-        elif rnd <= 1:
-            num_rings = 0
-            
-    elif C >= 0 and C <= 3:
-        num_rings = C
-    # enum rings blue = 1, green, oragne, yellow; cant have more then one of same ring
-    ring_options = [x for x in range(1,5)]
-    np.random.shuffle(ring_options)        
-    rings = ring_options[:num_rings] + [0] * (3 - num_rings)
-    
-    # enum caps black = 1, grey
-    cap = int(np.random.uniform(1, 3))
-    
-    # number of requested products
-    if amount == True:
-        num_products = [int(np.random.uniform(1, 3))]
-    else:
-        num_products = [0] if fill else []
-    
-    # if order is competitive
-    if compet == True:
-        competitive = [int(np.random.uniform(0, 2))]
-    else:
-        competitive = [0] if fill else []
-        
-    # the delivery window
-    minimum_window = 120
-    if window >= 0:
-        start = int(np.random.uniform(window + 1, 1021 - minimum_window))
-        end = int(np.random.uniform(start + minimum_window, 1021))
-        delivery_window = [start, end]
-    else:
-        delivery_window = [0, 0] if fill else []
-    
-    return [base] + rings + [cap] + num_products + competitive + delivery_window
-
 class field_pos():
     def __init__(self, x, y):
         self.x = x
@@ -91,6 +42,21 @@ class env_rcll():
     def __init__(self, normalize=False):
         self.ACTION_SPACE_SIZE = 8 + 1 # 8 orders plus one double slot for amounted order
         self.TOTAL_NUM_ORDERS = 9 # warning: currently does not scaling all
+        
+        # we create refbox-like behavoir by taking their parameters and functions; NEEDS UPDATE ON CHANGE
+        # taken from the (deffacts orders) from facts.clp
+        # defined as [complexity, number, proba_competitive, start_range, activation_range, duration_range]; range->touple
+        self.ORDER_PARAMETERS = [
+                [0, 1, 0, (0, 0), (1020, 1020), (1020, 1020)], # 1
+                [1, 1, 0, (0, 0), (1020, 1020), (1020, 1020)], # 2
+                [2, 1, 0, (650, 850), (500, 900), (100, 200)], # 3
+                [3, 1, 0, (650, 850), (1020, 1020), (150, 200)], # 4
+                [0, 1, 0.5, (200, 450), (120, 240), (60, 180)], # 5
+                [0, 2, 0, (350, 800), (120, 240), (60, 180)], # 6
+                [0, 1, 0.5, (800, 1020), (120, 240), (60, 180)], # 7
+                [1, 1, 0, (550, 800), (350, 550), (100, 200)], # 8
+                [0, 1, 1, (1020, 1020), (0, 0), (300, 300)] # 9 for overtime
+                ]
         
         # there are 3 rings, so 4 repeats
         self.ORDER_NORM_FACTOR = [3, 4, 4, 4, 2, 1, 1, 1021, 1021]
@@ -128,9 +94,69 @@ class env_rcll():
                 "DS": [20, 40], # official low and high
                 "SS": [5, 0.15] # estimate/assumption
                 }
+    
+    def create_order(self, C=-1, fill=False, amount=False, compet=False, window=-1):
+        # enum bases red = 1, black, silver
+        base = int(np.random.uniform(1, 4))
         
+        # number of rings
+        if C == -1:
+            rnd = np.random.uniform()
+            if rnd <= 1 / 9:
+                num_rings = 3
+            elif rnd <= 2 / 9:
+                num_rings = 2
+            elif rnd <= 4 / 9:
+                num_rings = 1
+            elif rnd <= 1:
+                num_rings = 0
+                
+        elif C >= 0 and C <= 3:
+            num_rings = C
+        # enum rings blue = 1, green, oragne, yellow; cant have more then one of same ring
+        ring_options = [x for x in range(1,5)]
+        np.random.shuffle(ring_options)        
+        rings = ring_options[:num_rings] + [0] * (3 - num_rings)
+        
+        # enum caps black = 1, grey
+        cap = int(np.random.uniform(1, 3))
+        
+        # number of requested products
+        if amount == True:
+            num_products = [int(np.random.uniform(1, 3))]
+        else:
+            num_products = [0] if fill else []
+        
+        # if order is competitive
+        if compet == True:
+            competitive = [int(np.random.uniform(0, 2))]
+        else:
+            competitive = [0] if fill else []
+            
+        # the delivery window
+        minimum_window = 120
+        if window >= 0:
+            start = int(np.random.uniform(window + 1, 1021 - minimum_window))
+            end = int(np.random.uniform(start + minimum_window, 1021))
+            delivery_window = [start, end]
+        else:
+            delivery_window = [0, 0] if fill else []
+        
+        return [base] + rings + [cap] + num_products + competitive + delivery_window
+    
+    
+    def update_ordrders(self):
+        """ take declarations for this game and update self.orders accordingly 
+            the declerations are sorted by activation time
+            also declarations use 0 to 1020, while we 1 to 1021 window"""
+        
+        for idx, dec in enumerate(self.order_declarations):
+            # 
+            if dec[0] < self.time:
+    
     def stage_to_machine(self, stage, order):
-        ##### correct processing_order to actual next machine
+        """ correct processing_order to actual next machine """
+        
         ring_col = None
         ring_pos = None
         ring_num = None
@@ -462,7 +488,7 @@ class env_rcll():
         # current roboter position
         self.robots = [field_pos(4.5, 0.5), field_pos(5.5, 0.5), field_pos(6.5, 0.5)]
 
-
+        # TODO: figure out computation code in the RefBox and copy it!
         # field generation (currently no respect on blocking and rotation)
         # can be placed on full 7x8 grid with exception of 51 61 71 52
         self.machines = {"CS1": None, "CS2": None, "RS1": None, "RS2": None, "SS": None, "BS": None, "DS": None}
@@ -509,21 +535,57 @@ class env_rcll():
         # current time
         self.time = 1 # as delivery windows are offset by 1 sec we start at 1sec
 
+        # FUNCTION TRANSLATION OF game.clp
+        # compute all release times and parameters of game orders; based on CLIPS code
+        self.order_declarations = []
+        p = [] # probabilities order being competitive
+        # [complexity, number, proba_competitive, start_range, activation_range, duration_range]
+        for oid, (complexity, number, proba_competitive, start_range, activation_range, duration_range) in enumerate(self.ORDER_PARAMETERS):
+            oid += 1 # correction start from 1
+            
+            # compute delivery window
+            deliver_start = int(np.random.uniform(start_range[0], start_range[1] + 1))
+            deliver_end = deliver_start + int(np.random.uniform(duration_range[0], duration_range[1] + 1))
+            # correct delivery winow to before game end
+            if deliver_end > 1020 and oid != 9: # 9th order is for overtime
+                deliver_start -= deliver_end - 1020
+                deliver_end = 1020
+            
+            # time order is announced
+            activation_pre_time = int(np.random.uniform(activation_range[0], activation_range[1] + 1))
+            activate_at = max(deliver_start - activation_pre_time, 0)
+            
+            # all (non-1) proba_competitive sum up to 1
+            if proba_competitive == 1:
+                competitive = 1
+                p.append(0)
+            else:
+                competitive = 0
+                p.append(proba_competitive)
+            
+            self.order_declarations.append([activate_at, oid, complexity, number, competitive, deliver_start, deliver_end])
+        
+        # figure out if competitive; currently only one order is
+        rnd = np.random.choice(np.arange(len(self.ORDER_PARAMETERS)), p=p)
+        self.order_declarations[rnd][-1] = 1
+        
+        # we sort the list to have the order of appearance
+        self.order_declarations.sort(key=lambda x: x[0])
 
 
         # RefBox like behavoir (=distribution); creating full matrix
         self.orders = [[0] * 9] * self.TOTAL_NUM_ORDERS
         # id1 is C0 full window
-        self.orders[0] = create_order(C=0, fill=True)
+        self.orders[0] = self.create_order(C=0, fill=True)
         self.orders[0][-1] = 1021
         self.orders[0][-2] = 1
         # id2 is C1 with a ring requiring additional base, full window
-        self.orders[1] = create_order(C=0, fill=True)
+        self.orders[1] = self.create_order(C=0, fill=True)
         self.orders[1][1] = self.ring_additional_bases[int(np.random.uniform(0, 2))]
         self.orders[1][-1] = 1021
         self.orders[1][-2] = 1
         # id4 is C3, window around 600+
-        self.orders[3] = create_order(C=3, fill=True, window=600)
+        self.orders[3] = self.create_order(C=3, fill=True, window=600)
         
         # track what assembly step we are at
         self.order_stage = ["BS"] * self.TOTAL_NUM_ORDERS
@@ -605,7 +667,7 @@ class env_rcll():
         ### apply the real time passed
         self.time += time_driving + time_mechanical + time_wait
         
-        
+        ###
         
         # we are finished with the episode at the end of the game
         if self.time >= 1021:
