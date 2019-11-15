@@ -2,13 +2,10 @@
 # -*- coding: utf-8 -*- 
 
 import time
-import struct
-import traceback
 import datetime as dt
 import numpy as np
 import math
-from enum import Enum
-from copy import deepcopy # more performant then dict()
+from random import SystemRandom
 import matplotlib.pyplot as plt
 
 # TODO: need to make refbox_comm into a class or uglily import it to get running globals
@@ -40,6 +37,7 @@ class field_pos():
 
 class env_rcll():
     def __init__(self, normalize=False):
+        self.random = SystemRandom() # local random number generator
         self.TOTAL_NUM_ORDERS = 8 # warning: currently does not scale all
         self.ACTION_SPACE_SIZE = self.TOTAL_NUM_ORDERS + 1 # plus one slot for double amount order
         
@@ -97,11 +95,11 @@ class env_rcll():
     
     def create_order(self, C=-1, fill=False, amount=False, compet=False, window=-1):
         # enum bases red = 1, black, silver
-        base = int(np.random.uniform(1, 4))
+        base = self.random.randint(1, 3)
         
         # number of rings
         if C == -1:
-            rnd = np.random.uniform()
+            rnd = self.random.random()
             if rnd <= 1 / 9:
                 num_rings = 3
             elif rnd <= 2 / 9:
@@ -115,21 +113,21 @@ class env_rcll():
             num_rings = C
         # enum rings blue = 1, green, oragne, yellow; cant have more then one of same ring
         ring_options = [x for x in range(1,5)]
-        np.random.shuffle(ring_options)        
+        self.random.shuffle(ring_options)        
         rings = ring_options[:num_rings] + [0] * (3 - num_rings)
         
         # enum caps black = 1, grey
-        cap = int(np.random.uniform(1, 3))
+        cap = self.random.randint(1, 2)
         
         # number of requested products
         if amount == True:
-            num_products = [int(np.random.uniform(1, 3))]
+            num_products = [self.random.randint(1, 2)]
         else:
             num_products = [0] if fill else []
         
         # if order is competitive
         if compet == True:
-            competitive = [int(np.random.uniform(0, 2))]
+            competitive = [self.random.randint(1, 2)]
         else:
             competitive = [0] if fill else []
             
@@ -139,8 +137,8 @@ class env_rcll():
             delivery_window = [window[0], window[1]]
         else:
             if window >= 0:
-                start = int(np.random.uniform(window, 1020 - minimum_window))
-                end = int(np.random.uniform(start + minimum_window, 1020))
+                start = self.random.randint(window, 1020 - minimum_window)
+                end = self.random.randint(start + minimum_window, 1020)
                 delivery_window = [start, end]
             else:
                 delivery_window = [0, 0] if fill else []
@@ -495,10 +493,19 @@ class env_rcll():
     
     # reset all parameters to an initial game state
     def reset(self):
-        np.random.seed()
         # utility parameters
         self.episode_step = 0
-
+        
+        # custom used randomize runction from RefBox
+        def randomize(my_list):
+            l = len(my_list)
+            for _ in range(200):
+                a = self.random.randrange(l)
+                b = self.random.randrange(l)
+                tmp = my_list[a]
+                my_list[a] = my_list[b]
+                my_list[b] = tmp
+            return my_list
 
         # current roboter position
         self.robots = [field_pos(4.5, 0.5), field_pos(5.5, 0.5), field_pos(6.5, 0.5)]
@@ -559,15 +566,15 @@ class env_rcll():
             oid += 1 # correction start from 1
             
             # compute delivery window
-            deliver_start = int(np.random.uniform(start_range[0], start_range[1] + 1))
-            deliver_end = deliver_start + int(np.random.uniform(duration_range[0], duration_range[1] + 1))
+            deliver_start = self.random.randint(start_range[0], start_range[1])
+            deliver_end = deliver_start + self.random.randint(duration_range[0], duration_range[1])
             # correct delivery winow to before game end
             if deliver_end > 1020 and oid != 9: # 9th order is for overtime
                 deliver_start -= deliver_end - 1020
                 deliver_end = 1020
             
             # time order is announced
-            activation_pre_time = int(np.random.uniform(activation_range[0], activation_range[1] + 1))
+            activation_pre_time = self.random.randint(activation_range[0], activation_range[1])
             activate_at = max(deliver_start - activation_pre_time, 0)
             
             # all (non-1) proba_competitive sum up to 1
