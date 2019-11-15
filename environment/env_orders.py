@@ -59,7 +59,7 @@ class env_rcll():
                 ]
         
         # there are 3 rings, so 4 repeats
-        self.ORDER_NORM_FACTOR = [3, 4, 4, 4, 2, 1, 1, 1021, 1021]
+        self.ORDER_NORM_FACTOR = [] # old: [3, 4, 4, 4, 2, 1, 1, 1020, 1020]
         
         # order of steps needed to fulfill an oder
         self.processing_order = ["BS", "R1", "R2", "R3", "CS", "DS", "FIN"]
@@ -136,8 +136,8 @@ class env_rcll():
         # the delivery window
         minimum_window = 120
         if window >= 0:
-            start = int(np.random.uniform(window + 1, 1021 - minimum_window))
-            end = int(np.random.uniform(start + minimum_window, 1021))
+            start = int(np.random.uniform(window, 1020 - minimum_window))
+            end = int(np.random.uniform(start + minimum_window, 1020))
             delivery_window = [start, end]
         else:
             delivery_window = [0, 0] if fill else []
@@ -147,8 +147,7 @@ class env_rcll():
     
     def update_ordrders(self):
         """ take declarations for this game and update self.orders accordingly 
-            the declerations are sorted by activation time
-            also declarations use 0 to 1020, while we 1 to 1021 window"""
+            the declerations are sorted by activation time """
         
         for idx, dec in enumerate(self.order_declarations):
             # 
@@ -338,7 +337,7 @@ class env_rcll():
             # accumulate reward, as long game not over (expected)
             E_reward += reward
             # TODO: scale or consider variance for more fluent drop to 0 points (as we "might" make it in time)
-            if self.time + E_time > 1021:
+            if self.time + E_time > 1020:
                 E_reward = 0
             
             # save the step to next machine
@@ -453,7 +452,7 @@ class env_rcll():
         del_windows = np.array([o[-2:] for o in self.orders])
         observation = np.concatenate((observation_, del_windows), axis=1)
         # rest parameters; handling double order and time
-        remainder = E_multi_order +  [1021 - self.time]
+        remainder = E_multi_order +  [1020 - self.time]
         
         
         # normalize output
@@ -533,7 +532,7 @@ class env_rcll():
         
         
         # current time
-        self.time = 1 # as delivery windows are offset by 1 sec we start at 1sec
+        self.time = 0
 
         # FUNCTION TRANSLATION OF game.clp
         # compute all release times and parameters of game orders; based on CLIPS code
@@ -577,13 +576,13 @@ class env_rcll():
         self.orders = [[0] * 9] * self.TOTAL_NUM_ORDERS
         # id1 is C0 full window
         self.orders[0] = self.create_order(C=0, fill=True)
-        self.orders[0][-1] = 1021
-        self.orders[0][-2] = 1
+        self.orders[0][-1] = 1020
+        self.orders[0][-2] = 0
         # id2 is C1 with a ring requiring additional base, full window
         self.orders[1] = self.create_order(C=0, fill=True)
         self.orders[1][1] = self.ring_additional_bases[int(np.random.uniform(0, 2))]
-        self.orders[1][-1] = 1021
-        self.orders[1][-2] = 1
+        self.orders[1][-1] = 1020
+        self.orders[1][-2] = 0
         # id4 is C3, window around 600+
         self.orders[3] = self.create_order(C=3, fill=True, window=600)
         
@@ -670,11 +669,11 @@ class env_rcll():
         ###
         
         # we are finished with the episode at the end of the game
-        if self.time >= 1021:
+        if self.time >= 1020:
             done = True
         
         # we do not award points for steps which would have finished too late
-        if self.time > 1021:
+        if self.time > 1020:
             reward = 0
         
         return self.get_observation(), reward, done
@@ -688,24 +687,24 @@ if __name__ == "__main__":
     #### for debug scenario
     self = env_rcll()
     self.reset()
-    self.orders = [[1, 0, 0, 0, 2, 0, 0, 1, 1021], # @ 0006
-                   [2, 3, 0, 0, 2, 0, 0, 1, 1021], # @ 0006
-                   [1, 4, 1, 0, 2, 0, 0, 848, 1009], # @ 0239
-                   [1, 1, 3, 4, 2, 0, 0, 678, 834], # @ 0006
-                   [2, 0, 0, 0, 1, 0, 0, 421, 572], # @ 0268
-                   [3, 0, 0, 0, 2, 1, 0, 640, 748], # @ 0403
-                   [2, 0, 0, 0, 2, 0, 1, 841, 1021], # @ 0661
-                   [3, 2, 0, 0, 2, 0, 0, 710, 817]] # @ 0209
+    self.orders = [[1, 0, 0, 0, 2, 0, 0, 0, 1020], # @ 0006
+                   [2, 3, 0, 0, 2, 0, 0, 0, 1020], # @ 0006
+                   [1, 4, 1, 0, 2, 0, 0, 847, 1008], # @ 0239
+                   [1, 1, 3, 4, 2, 0, 0, 677, 833], # @ 0006
+                   [2, 0, 0, 0, 1, 0, 0, 420, 571], # @ 0268
+                   [3, 0, 0, 0, 2, 1, 0, 639, 747], # @ 0403
+                   [2, 0, 0, 0, 2, 0, 1, 840, 1020], # @ 0661
+                   [3, 2, 0, 0, 2, 0, 0, 709, 816]] # @ 0209
 #                   [0, 0, 0, 0, 0, 0, 0, 0, 0]]
     self.order_stage[5] = [self.order_stage[5], "BS"]
-#    self.orders = [[1, 0, 0, 0, 2, 0, 0, 1, 1021], # @ 0006
-#                   [2, 3, 0, 0, 2, 0, 0, 1, 1021], # @ 0006
+#    self.orders = [[1, 0, 0, 0, 2, 0, 0, 0, 1020], # @ 0006
+#                   [2, 3, 0, 0, 2, 0, 0, 0, 1020], # @ 0006
 #                   [0, 0, 0, 0, 0, 0, 0, 0, 0],
-#                   [1, 1, 3, 4, 2, 0, 0, 678, 834], # @ 0006
+#                   [1, 1, 3, 4, 2, 0, 0, 677, 833], # @ 0006
 #                   [0, 0, 0, 0, 0, 0, 0, 0, 0],
 #                   [0, 0, 0, 0, 0, 0, 0, 0, 0],
 #                   [0, 0, 0, 0, 0, 0, 0, 0, 0],
-#                   [3, 2, 0, 0, 2, 0, 0, 710, 817], # @ 0209
+#                   [3, 2, 0, 0, 2, 0, 0, 709, 816], # @ 0209
 #                   [0, 0, 0, 0, 0, 0, 0, 0, 0]]
     self.machines = {'CS1': field_pos(-3.5, 4.5),
                      'CS2': field_pos(2.5, 0.5),
