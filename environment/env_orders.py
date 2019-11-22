@@ -34,10 +34,11 @@ class field_pos():
         tmp = self - other
         return np.sqrt(tmp.x**2 + tmp.y**2)
 
+# Class copying numerical/statistical functions & propperties of the RefBox
 class RefBox_recreated():
-    def __init__(self, random):
-        # just in case we want same seed, we take randomness form the other module
-        self.random = random
+    def __init__(self):
+        # just in case we want same seed, we need take randomness like the other module
+        self.random = SystemRandom()
     
     def randomize(self, my_list):
         # custom used randomize runction from RefBox
