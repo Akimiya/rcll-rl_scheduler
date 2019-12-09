@@ -189,6 +189,8 @@ class DQNAgent:
             X.append(current_state)
             y.append(current_qs)
 
+        # TODO: where we have the Loss here? also the comparison of target and prediction network
+        
         # Fit on all samples as one batch, log only on terminal state
         # we already did random sampling so no shuffle; callback to the custom one
         # ONLY FIT IF ON terminal_state, else nothing
