@@ -45,16 +45,16 @@ class RefBox_recreated():
         # just in case we want same seed, we need take randomness like the other module
         self.random = SystemRandom()
         
-        # from the (deffacts orders) from facts.clp
-        # defined as [complexity, number, proba_competitive, start_range, activation_range, duration_range]; range->touple
+        # from the (deffacts orders) from facts.clp, including default order values
+        # defined as [complexity, number, competitive, start_range, activation_range, duration_range]; range->touple
         self.ORDER_PARAMETERS = [
                 [0, 1, 0, (0, 0), (1020, 1020), (1020, 1020)], # 1
                 [1, 1, 0, (0, 0), (1020, 1020), (1020, 1020)], # 2
                 [2, 1, 0, (650, 850), (500, 900), (100, 200)], # 3
                 [3, 1, 0, (650, 850), (1020, 1020), (150, 200)], # 4
-                [0, 1, 0.5, (200, 450), (120, 240), (60, 180)], # 5
+                [0, 1, 0, (200, 450), (120, 240), (60, 180)], # 5
                 [0, 2, 0, (350, 800), (120, 240), (60, 180)], # 6
-                [0, 1, 0.5, (800, 1020), (120, 240), (60, 180)], # 7
+                [0, 1, 0, (800, 1020), (120, 240), (60, 180)], # 7
                 [1, 1, 0, (550, 800), (350, 550), (100, 200)], # 8
                 [0, 1, 1, (1020, 1020), (0, 0), (300, 300)] # 9 for overtime
                 ]
@@ -240,17 +240,24 @@ class RefBox_recreated():
     # from game.clp
     def game_parametrize(self):
         # (bind ?ring-colors (randomize$ ?ring-colors))
-        c_first_rings = self.randomize(list(range(1, 5)))
-        c_counters = [0] * 3
+        ring_colors = self.randomize(list(range(1, 5)))
+        c1_first_ring = ring_colors[0]
+        c2_first_ring = ring_colors[1]
+        c3_first_ring = ring_colors[2]
+        cx_first_ring = ring_colors[3]
         
-        machines, down_period, rings = self.machine_init_randomize(c_first_rings)
+        c1_counter = 0
+        c2_counter = 0
+        c3_counter = 0
+        
+        machines, down_period, rings = self.machine_init_randomize(ring_colors)
         
         # reset orders, assign random times
+        order_declarations = []
         orders = []
         
-        p = [] # probabilities order being competitive
         # [complexity, number, proba_competitive, start_range, activation_range, duration_range]
-        for oid, (complexity, number, proba_competitive, start_range, activation_range, duration_range) in enumerate(self.ORDER_PARAMETERS):
+        for oid, (complexity, number, competitive, start_range, activation_range, duration_range) in enumerate(self.ORDER_PARAMETERS):
             oid += 1 # correction start from 1
             
             # selecting delivery window
@@ -265,21 +272,51 @@ class RefBox_recreated():
             activation_pre_time = self.random.randint(activation_range[0], activation_range[1])
             activate_at = max(deliver_start - activation_pre_time, 0)
             
+            order_declarations.append([activate_at, oid, complexity, number, competitive, (deliver_start, deliver_end)])
+        
+            # assumptions for the 2016 game and order to workpiece assignment!
+            order_ring_colors = []
+            if complexity == 0:
+                pass # for C0 we have nothing to do, no ring color
+                
+            elif complexity == 1:
+                c1_counter += 1
+                if c1_counter <= 1:
+                    first_ring = c1_first_ring
+                else:
+                    first_ring = cx_first_ring
+                order_ring_colors = [first_ring]
+                
+            elif complexity == 2:
+                c2_counter += 1
+                if c2_counter <= 1:
+                    first_ring = c2_first_ring
+                else:
+                    first_ring = cx_first_ring
+                tmp = [r for r in ring_colors if r != first_ring] # the remove$ step
+                tmp = self.randomize(tmp) # the randomize$ step
+                order_ring_colors = [first_ring] + tmp[:1]
             
+            elif complexity == 3:
+                c3_counter += 1
+                if c3_counter <= 1:
+                    first_ring = c3_first_ring
+                else:
+                    first_ring = cx_first_ring
+                tmp = [r for r in ring_colors if r != first_ring] # the remove$ step
+                tmp = self.randomize(tmp) # the randomize$ step
+                order_ring_colors = [first_ring] + tmp[:2]
             
-            # all (non-1) proba_competitive sum up to 1
-            if proba_competitive == 1:
-                competitive = 1
-                p.append(0)
-            else:
-                competitive = 0
-                p.append(proba_competitive)
+            # they just take a random of the allowed values
+            order_base_color = self.random.randint(1, 3) # 1 out of 3
+            order_cap_color = self.random.randint(1, 2) # 1 out of 2
             
-            orders.append([activate_at, oid, complexity, number, competitive, (deliver_start, deliver_end)])
-            
+            orders.append([order_base_color] + order_ring_colors + [0] * (3 - complexity) + 
+                          [order_cap_color] + [deliver_start, deliver_end])
+        
         # figure out if competitive; currently only one order is
-        rnd = np.random.choice(np.arange(len(self.ORDER_PARAMETERS)), p=p)
-        orders[rnd][-2] = 1    
+#        rnd = np.random.choice(np.arange(len(self.ORDER_PARAMETERS)), p=p)
+#        orders[rnd][-2] = 1    
         
         
         
