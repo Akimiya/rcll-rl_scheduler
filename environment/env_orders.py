@@ -68,16 +68,6 @@ class RefBox_recreated():
                                      225: 315,
                                      270: 270,
                                      315: 225}
-        
-        # (ring-spec (color RING_BLUE))
-        # (ring-spec (color RING_GREEN) (req-bases 1))
-        # (ring-spec (color RING_ORANGE))
-        # (ring-spec (color RING_YELLOW))
-        # enum rings blue = 1, green, oragne, yellow
-        self.ring_spec = {1: None,
-                          2: 1,
-                          3: None,
-                          4: None}
 
         # from globals.clp
         self.DOWN_TYPES = ["RS", "CS"]
@@ -327,15 +317,25 @@ class RefBox_recreated():
         # Randomize number of required additional bases
         m_add_bases = self.randomize([1, 3])
         # (do-for-fact ((?ring ring-spec)) (eq ?ring:color (nth$ (nth$ 1 ?m-add-bases) ?ring-colors))
-        ring = ring_colors[m_add_bases[0] - 1] # correction for indexing
+        req_bases_2 = ring_colors[m_add_bases[0] - 1] # correction for indexing
+        # (do-for-fact ((?ring ring-spec)) (eq ?ring:color (nth$ (nth$ 2 ?m-add-bases) ?ring-colors))
+        req_bases_1 = ring_colors[m_add_bases[1] - 1] # correction for indexing
+        # (or (eq ?ring:color (nth$ 2 ?ring-colors)) (eq ?ring:color (nth$ 4 ?ring-colors)))
+        # here we just assemble result as 2th and 4th element set to 0
+        ring_additional_bases = [req_bases_2, req_bases_1, ring_colors[1], ring_colors[3]]
         
-        ring_additional_bases = [4,3,2,1]
-        # figure out if competitive; currently only one order is
-#        rnd = np.random.choice(np.arange(len(self.ORDER_PARAMETERS)), p=p)
-#        orders[rnd][-2] = 1    
         
+        # Randomly assign an order to be a competitive order
+        potential_competitive_orders = []
+        for _, oid, complexity, number, _, (deliver_start, deliver_end) in order_declarations:
+            if complexity == 0 and number == 1 and oid != 9 and (deliver_start != 0 or deliver_end != self.PRODUCTION_TIME):
+                potential_competitive_orders.append(oid)
+        # (bind ?competitive-order-id (nth$ (random 1 (length$ ?potential-competitive-orders)) ?potential-competitive-orders))
+        competitive_order_id = self.random.randrange(len(potential_competitive_orders))
+        modify = potential_competitive_orders[competitive_order_id] - 1
+        order_declarations[modify][4] = 1 # set competitive
         
-        
+        return order_declarations, orders
 
 class env_rcll():
     """
