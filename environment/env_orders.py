@@ -255,9 +255,15 @@ class RefBox_recreated():
             down_period.append([c, start_time, end_time])
         
         
+        # Randomize ring colors per machine
+        # select RS1 machins for each team and assign rings
+        rs1 = ring_colors[:2]
+        # select RS2 machins for each team and assign rings
+        rs2 = ring_colors[2:]
+        rings = [rs1, rs2]
             
         # we currently only consider CYAN team in environment
-        return machines_cyan, down_period
+        return machines_cyan, down_period, 
             
     
     def game_parametrize(self):
