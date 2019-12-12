@@ -68,6 +68,16 @@ class RefBox_recreated():
                                      225: 315,
                                      270: 270,
                                      315: 225}
+        
+        # (ring-spec (color RING_BLUE))
+        # (ring-spec (color RING_GREEN) (req-bases 1))
+        # (ring-spec (color RING_ORANGE))
+        # (ring-spec (color RING_YELLOW))
+        # enum rings blue = 1, green, oragne, yellow
+        self.ring_spec = {1: None,
+                          2: 1,
+                          3: None,
+                          4: None}
 
         # from globals.clp
         self.DOWN_TYPES = ["RS", "CS"]
@@ -314,6 +324,12 @@ class RefBox_recreated():
             orders.append([order_base_color] + order_ring_colors + [0] * (3 - complexity) + 
                           [order_cap_color] + [deliver_start, deliver_end])
         
+        # Randomize number of required additional bases
+        m_add_bases = self.randomize([1, 3])
+        # (do-for-fact ((?ring ring-spec)) (eq ?ring:color (nth$ (nth$ 1 ?m-add-bases) ?ring-colors))
+        ring = ring_colors[m_add_bases[0] - 1] # correction for indexing
+        
+        ring_additional_bases = [4,3,2,1]
         # figure out if competitive; currently only one order is
 #        rnd = np.random.choice(np.arange(len(self.ORDER_PARAMETERS)), p=p)
 #        orders[rnd][-2] = 1    
@@ -825,7 +841,7 @@ class env_rcll():
         
 
         # defining additional ring bases
-        # first needs 2 bases, 2nd one, 3rd and 4th zero
+        # first needs two bases, 2nd one, 3rd and 4th zero
         self.ring_additional_bases = [x for x in range(1, 5)]
         np.random.shuffle(self.ring_additional_bases)
 
