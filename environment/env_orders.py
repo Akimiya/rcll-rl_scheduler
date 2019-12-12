@@ -58,6 +58,22 @@ class RefBox_recreated():
                 [0, 1, 1, (1020, 1020), (0, 0), (300, 300)] # 9 for overtime
                 ]
         
+        # from facts.clp inside "deffacts startup" the base definitions; order=> {cyan: magenta}
+        self.mirror_orientation_def = {0: 180,
+                                      45: 135,
+                                      90: 90,
+                                     135: 45,
+                                     180: 0,
+                                     225: 315,
+                                     270: 270,
+                                     315: 225}
+
+        # from globals.clp
+        self.DOWN_TYPES = ["RS", "CS"]
+        self.DOWN_TIME_MIN = 30 #  30
+        self.DOWN_TIME_MAX = 60 # 120
+        self.PRODUCTION_TIME = 1020
+        
         # debug for tracking number of errors
         self.solver_errors = 0
         self.solver_runs = 0
@@ -129,13 +145,47 @@ class RefBox_recreated():
         
         return field
     
+    # function from utils.clp; note: all coordinates are -0.5 in the environment
+    def mirror_orientation_function(self, mtype, pos):
+        t = pos.obj_type[0]
+        
+        # TODO: consider ML cases where we learn for both firled rotations (do they make a difference?)
+        # function from utils.clp summarized in one expression
+        want_mirrored_rotation = mtype in ["BS", "DS", "SS"] or \
+        (not (pos.x == 6.5 or pos.y == 7.5 or pos.y == 0.5 or (pos.x in [4.5, 5.5, 6.5] and pos.y == 1.5)))
+        
+        if want_mirrored_rotation:
+            if t == "C":
+                m_ori = self.mirror_orientation_def[pos.rotation]
+            else:
+                # inverse lookup of {magenta: cyan}
+                m_ori = next(c for c, m in self.mirror_orientation_def.items() if m == pos.rotation)
+                
+            return m_ori
+        
+        else:
+            x = pos.x
+            y = pos.y
+            
+            if y == 7.5:
+                return 180
+            if y == 0.5 or y == 1.5:
+                return 0
+            if x == 6.5 and t == "M":
+                return 90
+            if x == 6.5 and t == "C":
+                return 270
+            
+            return pos.rotation
+    
     # translated from machines.clp
     def machine_init_randomize(self, ring_colors):
         # resets machines, first set all parameters to 0, all lights on and state to IDLE
         # this creates 
         # read field from "/llsfrb/game/random-field" if available
         # Randomizing from scratch if some machine is still zone TBD or overwrite-generating flag set
-        machines = {"CS1": None, "CS2": None, "RS1": None, "RS2": None, "SS": None, "BS": None, "DS": None}
+        machines_cyan = {"CS1": None, "CS2": None, "RS1": None, "RS2": None, "SS": None, "BS": None, "DS": None}
+        machines_magenta = {"CS1": None, "CS2": None, "RS1": None, "RS2": None, "SS": None, "BS": None, "DS": None}
         # defines some unused ?zones-magenta
         
         # generate new full machine field; all code before this is mostly irrellevant
@@ -146,7 +196,7 @@ class RefBox_recreated():
         for m_desc in field.decode("utf-8").split('\n')[:-1]:
             machine, zone, rotation = m_desc.split(", ")
             
-            # preprocess
+            # preprocess; note: we use -0.5 positions in the envronment
             machine = machine[2:] # strip "M-"
             x_pos = int(zone[-2]) - 0.5
             y_pos = int(zone[-1]) - 0.5
@@ -154,16 +204,61 @@ class RefBox_recreated():
             
             pos = field_pos(x_pos, y_pos)
             pos.rotation = rotation
+            # like in files generation is assumed as for team MAGENTA
+            pos.obj_type = "M_" + machine
             
-            machines[machine] = pos
+            machines_magenta[machine] = pos
         
-        # Mirror machines for other team; we skip this as we only interested in one team 
-        # BUT there are multiple rules on which machine types get which treatment; assume we are MAGENTA
+        
+        # Mirror machine position and rotation for other team
+        for mtype, pos in machines_magenta.items():
+            # for the actual zone name only the prefix changes (e.g. from "M_" to "C_"); for us its the sign
+            x = - pos.x
+            y = pos.y
+            machines_cyan[mtype] = field_pos(x, y)
+            # for consistency..
+            machines_cyan[mtype].obj_type = "C" + pos.obj_type[1:]
+            
+            machines_cyan[mtype].rotation = self.mirror_orientation_function(mtype, pos)
+            
         
         # Swap machines
         machines_to_swap = ["RS" + str(self.random.randrange(1, 3)), 
                             "CS" + str(self.random.randrange(1, 3))]
+        # we just literally rewrite, even though it is just two python lines..
+        for ms in machines_to_swap:
+            m_cyan = machines_cyan[ms]
+            m_magenta = machines_magenta[ms]
+            
+            zr_cyan = m_cyan
+            zr_magenta = m_magenta
+            
+            machines_cyan[ms] = zr_magenta
+            machines_magenta[ms] = zr_cyan
         
+        
+        # assign random down times
+        # assume ?*RANDOMIZE-GAME* = TRUE
+        candidates = []
+        for t in self.DOWN_TYPES:
+            t_candidates = [m for m in machines_cyan if m[:2] == t]
+            t_candidates = self.randomize(t_candidates) # randomize$
+            candidates.append(t_candidates[0]) # first$ and append$
+        
+        down_period = []
+        for c in candidates:
+            duration = self.random.randrange(self.DOWN_TIME_MIN, self.DOWN_TIME_MAX + 1)
+            start_time = self.random.randrange(1, self.PRODUCTION_TIME - duration)
+            end_time = start_time + duration
+            
+            # Copy to magenta machine; we don't worry about it internally
+            down_period.append([c, start_time, end_time])
+        
+        
+            
+        # we currently only consider CYAN team in environment
+        return machines_cyan, down_period
+            
     
     def game_parametrize(self):
         c_first_rings = self.randomize(list(range(1, 5)))
