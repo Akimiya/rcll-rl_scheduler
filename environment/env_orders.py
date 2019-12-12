@@ -38,13 +38,14 @@ class field_pos():
         return np.sqrt(tmp.x**2 + tmp.y**2)
 
 # Class copying numerical/statistical functions & propperties of the RefBox
+# we create refbox-like behavoir by taking their parameters and functions
+# NEEDS TO BE UPDATED ON LIVE CHANGE (in these *.clp files)
 class RefBox_recreated():
     def __init__(self):
         # just in case we want same seed, we need take randomness like the other module
         self.random = SystemRandom()
         
-        # we create refbox-like behavoir by taking their parameters and functions; NEEDS TO BE UPDATED ON CHANGE
-        # taken from the (deffacts orders) from facts.clp
+        # from the (deffacts orders) from facts.clp
         # defined as [complexity, number, proba_competitive, start_range, activation_range, duration_range]; range->touple
         self.ORDER_PARAMETERS = [
                 [0, 1, 0, (0, 0), (1020, 1020), (1020, 1020)], # 1
@@ -90,39 +91,7 @@ class RefBox_recreated():
             my_list[a] = my_list[b]
             my_list[b] = tmp
         return my_list
-    
-    """
-    (slot zone (type SYMBOL) (default TBD)
-	  (allowed-values TBD
-      C_Z18 C_Z28 C_Z38 C_Z48 C_Z58 C_Z68 C_Z78 
-      C_Z17 C_Z27 C_Z37 C_Z47 C_Z57 C_Z67 C_Z77 
-      C_Z16 C_Z26 C_Z36 C_Z46 C_Z56 C_Z66 C_Z76 
-      C_Z15 C_Z25 C_Z35 C_Z45 C_Z55 C_Z65 C_Z75 
-      C_Z14 C_Z24 C_Z34 C_Z44 C_Z54 C_Z64 C_Z74 
-      C_Z13 C_Z23 C_Z33 C_Z43 C_Z53 C_Z63 C_Z73 
-      C_Z12 C_Z22 C_Z32 C_Z42 C_Z52 C_Z62 C_Z72 
-      C_Z11 C_Z21 C_Z31 C_Z41
-      M_Z18 M_Z28 M_Z38 M_Z48 M_Z58 M_Z68 M_Z78 
-      M_Z17 M_Z27 M_Z37 M_Z47 M_Z57 M_Z67 M_Z77 
-      M_Z16 M_Z26 M_Z36 M_Z46 M_Z56 M_Z66 M_Z76 
-      M_Z15 M_Z25 M_Z35 M_Z45 M_Z55 M_Z65 M_Z75 
-      M_Z14 M_Z24 M_Z34 M_Z44 M_Z54 M_Z64 M_Z74 
-      M_Z13 M_Z23 M_Z33 M_Z43 M_Z53 M_Z63 M_Z73 
-      M_Z12 M_Z22 M_Z32 M_Z42 M_Z52 M_Z62 M_Z72 
-      M_Z11 M_Z21 M_Z31 M_Z41
-        )
-      )
-      
-      ?*MACHINE-ZONES-MAGENTA* = (create$ 
-    M_Z18 M_Z28 M_Z38 M_Z48 M_Z58 M_Z68 M_Z78 
-    M_Z17 M_Z27 M_Z37 M_Z47 M_Z57 M_Z67 M_Z77 
-    M_Z16 M_Z26 M_Z36 M_Z46 M_Z56 M_Z66 M_Z76 
-    M_Z15 M_Z25 M_Z35 M_Z45 M_Z55 M_Z65 M_Z75 
-    M_Z14 M_Z24 M_Z34 M_Z44 M_Z54 M_Z64 M_Z74 
-    M_Z13 M_Z23 M_Z33 M_Z43 M_Z53 M_Z63 M_Z73 
-    M_Z12 M_Z22 M_Z32 M_Z42 M_Z52 M_Z62 M_Z72 
-    M_Z11 M_Z21 M_Z31 M_Z41)
-    """
+
     
     # running code from mps_placing_clips.cpp
     # CLIPS calls this function binding C function to it
@@ -144,7 +113,8 @@ class RefBox_recreated():
         print("field generation took", time.time() - start)
         
         return field
-    
+
+
     # function from utils.clp; note: all coordinates are -0.5 in the environment
     def mirror_orientation_function(self, mtype, pos):
         t = pos.obj_type[0]
@@ -177,7 +147,8 @@ class RefBox_recreated():
                 return 270
             
             return pos.rotation
-    
+
+
     # translated from machines.clp
     def machine_init_randomize(self, ring_colors):
         # resets machines, first set all parameters to 0, all lights on and state to IDLE
@@ -223,8 +194,8 @@ class RefBox_recreated():
             
         
         # Swap machines
-        machines_to_swap = ["RS" + str(self.random.randrange(1, 3)), 
-                            "CS" + str(self.random.randrange(1, 3))]
+        machines_to_swap = ["RS" + str(self.random.randint(1, 2)), 
+                            "CS" + str(self.random.randint(1, 2))]
         # we just literally rewrite, even though it is just two python lines..
         for ms in machines_to_swap:
             m_cyan = machines_cyan[ms]
@@ -247,8 +218,8 @@ class RefBox_recreated():
         
         down_period = []
         for c in candidates:
-            duration = self.random.randrange(self.DOWN_TIME_MIN, self.DOWN_TIME_MAX + 1)
-            start_time = self.random.randrange(1, self.PRODUCTION_TIME - duration)
+            duration = self.random.randint(self.DOWN_TIME_MIN, self.DOWN_TIME_MAX)
+            start_time = self.random.randint(1, self.PRODUCTION_TIME - duration)
             end_time = start_time + duration
             
             # Copy to magenta machine; we don't worry about it internally
@@ -263,14 +234,54 @@ class RefBox_recreated():
         rings = [rs1, rs2]
             
         # we currently only consider CYAN team in environment
-        return machines_cyan, down_period, 
+        return machines_cyan, down_period, rings
             
     
+    # from game.clp
     def game_parametrize(self):
+        # (bind ?ring-colors (randomize$ ?ring-colors))
         c_first_rings = self.randomize(list(range(1, 5)))
         c_counters = [0] * 3
         
-        self.machine_init_randomize(c_first_rings)
+        machines, down_period, rings = self.machine_init_randomize(c_first_rings)
+        
+        # reset orders, assign random times
+        orders = []
+        
+        p = [] # probabilities order being competitive
+        # [complexity, number, proba_competitive, start_range, activation_range, duration_range]
+        for oid, (complexity, number, proba_competitive, start_range, activation_range, duration_range) in enumerate(self.ORDER_PARAMETERS):
+            oid += 1 # correction start from 1
+            
+            # selecting delivery window
+            deliver_start = self.random.randint(start_range[0], start_range[1])
+            deliver_end = deliver_start + self.random.randint(duration_range[0], duration_range[1])
+            # correct delivery winow to before game end
+            if deliver_end > self.PRODUCTION_TIME and oid != 9: # 9th order is for overtime
+                deliver_start -= deliver_end - self.PRODUCTION_TIME
+                deliver_end = self.PRODUCTION_TIME
+            
+            # time order is announced
+            activation_pre_time = self.random.randint(activation_range[0], activation_range[1])
+            activate_at = max(deliver_start - activation_pre_time, 0)
+            
+            
+            
+            # all (non-1) proba_competitive sum up to 1
+            if proba_competitive == 1:
+                competitive = 1
+                p.append(0)
+            else:
+                competitive = 0
+                p.append(proba_competitive)
+            
+            orders.append([activate_at, oid, complexity, number, competitive, (deliver_start, deliver_end)])
+            
+        # figure out if competitive; currently only one order is
+        rnd = np.random.choice(np.arange(len(self.ORDER_PARAMETERS)), p=p)
+        orders[rnd][-2] = 1    
+        
+        
         
 
 class env_rcll():
@@ -797,39 +808,9 @@ class env_rcll():
         # current time
         self.time = 0
 
-        # FUNCTION TRANSLATION OF game.clp
-        # compute all release times and parameters of game orders; based on CLIPS code
-        self.order_declarations = []
-        p = [] # probabilities order being competitive
-        # [complexity, number, proba_competitive, start_range, activation_range, duration_range]
-        for oid, (complexity, number, proba_competitive, start_range, activation_range, duration_range) in enumerate(self.ORDER_PARAMETERS):
-            oid += 1 # correction start from 1
-            
-            # compute delivery window
-            deliver_start = self.random.randint(start_range[0], start_range[1])
-            deliver_end = deliver_start + self.random.randint(duration_range[0], duration_range[1])
-            # correct delivery winow to before game end
-            if deliver_end > 1020 and oid != 9: # 9th order is for overtime
-                deliver_start -= deliver_end - 1020
-                deliver_end = 1020
-            
-            # time order is announced
-            activation_pre_time = self.random.randint(activation_range[0], activation_range[1])
-            activate_at = max(deliver_start - activation_pre_time, 0)
-            
-            # all (non-1) proba_competitive sum up to 1
-            if proba_competitive == 1:
-                competitive = 1
-                p.append(0)
-            else:
-                competitive = 0
-                p.append(proba_competitive)
-            
-            self.order_declarations.append([activate_at, oid, complexity, number, competitive, (deliver_start, deliver_end)])
-        
-        # figure out if competitive; currently only one order is
-        rnd = np.random.choice(np.arange(len(self.ORDER_PARAMETERS)), p=p)
-        self.order_declarations[rnd][-2] = 1
+        # TODO: order declaration moved to RefBox_recreated()
+        # compute all release times and parameters of game orders
+        self.order_declarations = self.RefBox.game_para...
         
         # we sort the list to have the order of appearance
         self.order_declarations.sort(key=lambda x: x[0])
