@@ -39,41 +39,41 @@ class field_pos():
 
 # Class copying numerical/statistical functions & propperties of the RefBox
 # we create refbox-like behavoir by taking their parameters and functions
-# NEEDS TO BE UPDATED ON LIVE CHANGE (in these *.clp files)
+""" NEEDS TO BE UPDATED ON CHANGE (in the *.clp files and <mps_placing_clips> folder) """
 class RefBox_recreated():
+    # from the (deffacts orders) from facts.clp, including default order values
+    # defined as [complexity, number, competitive, start_range, activation_range, duration_range]; range->touple
+    ORDER_PARAMETERS = [
+            [0, 1, 0, (0, 0), (1020, 1020), (1020, 1020)], # 1
+            [1, 1, 0, (0, 0), (1020, 1020), (1020, 1020)], # 2
+            [2, 1, 0, (650, 850), (500, 900), (100, 200)], # 3
+            [3, 1, 0, (650, 850), (1020, 1020), (150, 200)], # 4
+            [0, 1, 0, (200, 450), (120, 240), (60, 180)], # 5
+            [0, 2, 0, (350, 800), (120, 240), (60, 180)], # 6
+            [0, 1, 0, (800, 1020), (120, 240), (60, 180)], # 7
+            [1, 1, 0, (550, 800), (350, 550), (100, 200)], # 8
+            [0, 1, 1, (1020, 1020), (0, 0), (300, 300)] # 9 for overtime
+            ]
+    
+    # from facts.clp inside "deffacts startup" the base definitions; order=> {cyan: magenta}
+    mirror_orientation_def = {0: 180,
+                                  45: 135,
+                                  90: 90,
+                                 135: 45,
+                                 180: 0,
+                                 225: 315,
+                                 270: 270,
+                                 315: 225}
+
+    # from globals.clp
+    DOWN_TYPES = ["RS", "CS"]
+    DOWN_TIME_MIN = 30 #  30
+    DOWN_TIME_MAX = 60 # 120
+    PRODUCTION_TIME = 1020
+    
     def __init__(self):
         # just in case we want same seed, we need take randomness like the other module
         self.random = SystemRandom()
-        
-        # from the (deffacts orders) from facts.clp, including default order values
-        # defined as [complexity, number, competitive, start_range, activation_range, duration_range]; range->touple
-        self.ORDER_PARAMETERS = [
-                [0, 1, 0, (0, 0), (1020, 1020), (1020, 1020)], # 1
-                [1, 1, 0, (0, 0), (1020, 1020), (1020, 1020)], # 2
-                [2, 1, 0, (650, 850), (500, 900), (100, 200)], # 3
-                [3, 1, 0, (650, 850), (1020, 1020), (150, 200)], # 4
-                [0, 1, 0, (200, 450), (120, 240), (60, 180)], # 5
-                [0, 2, 0, (350, 800), (120, 240), (60, 180)], # 6
-                [0, 1, 0, (800, 1020), (120, 240), (60, 180)], # 7
-                [1, 1, 0, (550, 800), (350, 550), (100, 200)], # 8
-                [0, 1, 1, (1020, 1020), (0, 0), (300, 300)] # 9 for overtime
-                ]
-        
-        # from facts.clp inside "deffacts startup" the base definitions; order=> {cyan: magenta}
-        self.mirror_orientation_def = {0: 180,
-                                      45: 135,
-                                      90: 90,
-                                     135: 45,
-                                     180: 0,
-                                     225: 315,
-                                     270: 270,
-                                     315: 225}
-
-        # from globals.clp
-        self.DOWN_TYPES = ["RS", "CS"]
-        self.DOWN_TIME_MIN = 30 #  30
-        self.DOWN_TIME_MAX = 60 # 120
-        self.PRODUCTION_TIME = 1020
         
         # debug for tracking number of errors
         self.solver_errors = 0
@@ -254,7 +254,7 @@ class RefBox_recreated():
         
         # reset orders, assign random times
         order_declarations = []
-        orders = []
+        orders_full = []
         
         # [complexity, number, proba_competitive, start_range, activation_range, duration_range]
         for oid, (complexity, number, competitive, start_range, activation_range, duration_range) in enumerate(self.ORDER_PARAMETERS):
@@ -311,7 +311,7 @@ class RefBox_recreated():
             order_base_color = self.random.randint(1, 3) # 1 out of 3
             order_cap_color = self.random.randint(1, 2) # 1 out of 2
             
-            orders.append([order_base_color] + order_ring_colors + [0] * (3 - complexity) + 
+            orders_full.append([order_base_color] + order_ring_colors + [0] * (3 - complexity) + 
                           [order_cap_color] + [deliver_start, deliver_end])
         
         # Randomize number of required additional bases
@@ -335,7 +335,7 @@ class RefBox_recreated():
         modify = potential_competitive_orders[competitive_order_id] - 1
         order_declarations[modify][4] = 1 # set competitive
         
-        return order_declarations, orders
+        return machines, down_period, rings, ring_additional_bases, order_declarations, orders_full
 
 class env_rcll():
     """
@@ -362,8 +362,6 @@ class env_rcll():
         # if passed use game code as similar to the real thing as possible
         # make sure class is up-to-date with actual RefBox!
         self.RefBox = RefBox_recreated
-        # keppig the constant in other class as it needs to be kept up-to-date
-        self.ORDER_PARAMETERS = self.RefBox.ORDER_PARAMETERS
         
         
         # rewards
@@ -394,40 +392,83 @@ class env_rcll():
                 "SS": [5, 0.15] # estimate/assumption
                 }
         
-    def generate_machine_positions(self):
+    def generate_game_setting(self):
         """
-        Function positioning the machines on the field.
+        Fully random function positioning the machines on the field.
         Main result is final definition of "self.machines".
+        Only used without defined RefBox.
         """
-        # in case we use the identical recreation, we define like the RefBox
-        if self.RefBox:
-            self.machines = self.RefBox.mps_generator_get_generated_field()
         
+        # field generation (no respect for blocking and rotation)
+        # can be placed on full 7x8 grid with exception of 51 61 71 52
+        self.machines = {"CS1": None, "CS2": None, "RS1": None, "RS2": None, "SS": None, "BS": None, "DS": None}
+        for machine in self.machines:
+            # filter impossible and overlapping positions
+            while True:
+                x_pos = self.random.randint(0, 6) + 0.5
+                y_pos = self.random.randint(0, 7) + 0.5
+                pos = field_pos(x_pos, y_pos)
+                
+                # to not have overlaps
+                if pos not in self.robots and pos != (4.5, 1.5) and pos not in self.machines.values():
+                    break
+            self.machines[machine] = pos
+        
+        # swap/flip ONE random CS and ONE random RS to the other side
+        if self.random.randint(0, 1):
+            self.machines["RS1"].x *= -1
         else:
-            # field generation (no respect for blocking and rotation)
-            # can be placed on full 7x8 grid with exception of 51 61 71 52
-            self.machines = {"CS1": None, "CS2": None, "RS1": None, "RS2": None, "SS": None, "BS": None, "DS": None}
-            for machine in self.machines:
-                # filter impossible and overlapping positions
-                while True:
-                    x_pos = self.random.randint(0, 6) + 0.5
-                    y_pos = self.random.randint(0, 7) + 0.5
-                    pos = field_pos(x_pos, y_pos)
-                    
-                    # to not have overlaps
-                    if pos not in self.robots and pos != (4.5, 1.5) and pos not in self.machines.values():
-                        break
-                self.machines[machine] = pos
+            self.machines["RS2"].y *= -1
+        if self.random.randint(0, 1):
+            self.machines["CS1"].x *= -1
+        else:
+            self.machines["CS2"].y *= -1
+        
+
+        # defining additional ring bases
+        np.random.shuffle(self.ring_additional_bases)
+
+        # assigning which RS gets which colors
+        rnd = int(np.random.uniform(0, 2))
+        self.rings[0][0] = self.ring_additional_bases[rnd]
+        self.rings[1][0] = self.ring_additional_bases[1 - rnd]
+        rnd = int(np.random.uniform(0, 2))
+        self.rings[0][1] = self.ring_additional_bases[2 + rnd]
+        self.rings[1][1] = self.ring_additional_bases[2 + 1 - rnd]
+        
+        # using similar to RefBox parameters & computation for activation times
+        p = []
+        self.order_declarations = []
+        for oid, (complexity, number, competitive, start_range, activation_range, duration_range) in enumerate(RefBox_recreated.ORDER_PARAMETERS):
+            oid += 1 # correction start from 1
             
-            # swap/flip ONE random CS and ONE random RS to the other side
-            if self.random.randint(0, 1):
-                self.machines["RS1"].x *= -1
+            # selecting delivery window
+            deliver_start = self.random.randint(start_range[0], start_range[1])
+            deliver_end = deliver_start + self.random.randint(duration_range[0], duration_range[1])
+            # correct delivery winow to before game end
+            if deliver_end > RefBox_recreated.PRODUCTION_TIME and oid != 9: # 9th order is for overtime
+                deliver_start -= deliver_end - RefBox_recreated.PRODUCTION_TIME
+                deliver_end = RefBox_recreated.PRODUCTION_TIME
+            
+            # time order is announced
+            activation_pre_time = self.random.randint(activation_range[0], activation_range[1])
+            activate_at = max(deliver_start - activation_pre_time, 0)
+            
+            # all (non-1) proba_competitive sum up to 1
+            if competitive == 1:
+                p.append(0)
             else:
-                self.machines["RS2"].y *= -1
-            if self.random.randint(0, 1):
-                self.machines["CS1"].x *= -1
-            else:
-                self.machines["CS2"].y *= -1
+                if complexity == 0 and number == 1 and oid != 9 and (deliver_start != 0 or deliver_end != RefBox_recreated.PRODUCTION_TIME):
+                    p.append(1)
+                else:
+                    p.append(0)
+            
+            self.order_declarations.append([activate_at, oid, complexity, number, competitive, (deliver_start, deliver_end)])
+        
+        # figure out if competitive; currently only one order is
+        p = [x / sum(p) for x in p] # normazize to sum up to 1
+        rnd = np.random.choice(np.arange(len(self.order_declarations)), p=p)
+        self.order_declarations[rnd][-2] = 1
         
     
     def create_order(self, C=-1, fill=False, amount=False, compet=False, window=-1):
@@ -484,8 +525,10 @@ class env_rcll():
     
     
     def update_orders(self):
-        """ take declarations for this game and update self.orders accordingly 
-            the declerations are sorted by activation time """
+        """
+        Take declarations for this game and update self.orders accordingly .
+        The declerations are sorted by activation time.
+        """
         
         for activate, oid, C, n, compet, delivery in self.order_declarations:
             # checking activation time
@@ -497,7 +540,10 @@ class env_rcll():
                 assert activate == self.time
                 assert n >= 1 and n <= 2
                 
-                self.orders[oid - 1] = self.create_order(C=C, fill=True, amount=n - 1, compet=compet, window=delivery)
+                if self.orders_full:
+                    self.orders[oid - 1] = self.orders_full[oid - 1]
+                else: 
+                    self.orders[oid - 1] = self.create_order(C=C, fill=True, amount=n - 1, compet=compet, window=delivery)
                 
             else:
                 # tracking when this function needs to be called next
@@ -505,7 +551,7 @@ class env_rcll():
                 break
     
     def stage_to_machine(self, stage, order):
-        """ correct processing_order to actual next machine """
+        """ correct processing_order encoding to actual next machine """
         
         ring_col = None
         ring_pos = None
@@ -835,46 +881,45 @@ class env_rcll():
 
         # current roboter position
         self.robots = [field_pos(4.5, 0.5), field_pos(5.5, 0.5), field_pos(6.5, 0.5)]
-
-        # machine positions
-        self.generate_machine_positions()
         
-
-        # defining additional ring bases
-        # first needs two bases, 2nd one, 3rd and 4th zero
-        self.ring_additional_bases = [x for x in range(1, 5)]
-        np.random.shuffle(self.ring_additional_bases)
-
-
         # assign the rings to RS1 and RS2 respectively, each getting one complicated
         self.rings = [[0, 0], [0, 0]]
-        rnd = int(np.random.uniform(0, 2))
-        self.rings[0][0] = self.ring_additional_bases[rnd]
-        self.rings[1][0] = self.ring_additional_bases[1 - rnd]
-        rnd = int(np.random.uniform(0, 2))
-        self.rings[0][1] = self.ring_additional_bases[2 + rnd]
-        self.rings[1][1] = self.ring_additional_bases[2 + 1 - rnd]
-        # track how many bases a ring station has buffered
-        self.rings_buf_bases = [0, 0]
         
+        # first needs two bases, 2nd one, 3rd and 4th zero
+        self.ring_additional_bases = [x for x in range(1, 5)]
         
-        # current time
-        self.time = 0
-
-        # TODO: order declaration moved to RefBox_recreated()
-        # compute all release times and parameters of game orders
-        self.order_declarations = self.RefBox.game_para...
-        
-        # we sort the list to have the order of appearance
-        self.order_declarations.sort(key=lambda x: x[0])
-
         # create initial orders
         self.orders = [[0] * 9] * self.TOTAL_NUM_ORDERS
         self.orders_next_activation = 0
-        self.update_orders()
+        self.orders_full = None # only used for RefBox, default behavoir creates orders on time based on declarations
         
         # track what assembly step we are at
         self.order_stage = ["BS"] * self.ACTION_SPACE_SIZE
+        
+        # track how many bases a ring station has buffered
+        self.rings_buf_bases = [0, 0]
+                
+        # current time
+        self.time = 0
+        
+        
+        # in case we use the identical recreation, we define like the RefBox
+        if self.RefBox:
+            machines, down_period, rings, ring_additional_bases, order_declarations, orders_full = self.RefBox.game_parametrize()
+            self.machines = machines
+            self.machines_down_period = down_period
+            self.rings = rings
+            self.ring_additional_bases = ring_additional_bases
+            self.order_declarations = order_declarations
+            self.orders_full = orders_full
+        else:
+            # assumes all parameters have already ben initialized
+            self.generate_game_setting()
+        
+        # we sort the list to have the order of appearance
+        self.order_declarations.sort(key=lambda x: x[0])
+        # actually assign current orders
+        self.update_orders()
 
 
         return self.get_observation()
@@ -971,7 +1016,8 @@ if __name__ == "__main__":
     
     
     #### for debug scenario
-    self = env_rcll()
+    r = RefBox_recreated()
+    self = env_rcll(r)
     self.reset()
     
     assert False
