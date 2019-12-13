@@ -168,14 +168,14 @@ class RefBox_recreated():
             machine, zone, rotation = m_desc.split(", ")
             
             # preprocess; note: we use -0.5 positions in the envronment
+            # like in files generation is assumed as for team MAGENTA
             machine = machine[2:] # strip "M-"
-            x_pos = int(zone[-2]) - 0.5
+            x_pos = - (int(zone[-2]) - 0.5) # minus for position MAGENTA
             y_pos = int(zone[-1]) - 0.5
             rotation = int(rotation)
             
             pos = field_pos(x_pos, y_pos)
             pos.rotation = rotation
-            # like in files generation is assumed as for team MAGENTA
             pos.obj_type = "M_" + machine
             
             machines_magenta[machine] = pos
@@ -896,6 +896,9 @@ class env_rcll():
         # track what assembly step we are at
         self.order_stage = ["BS"] * self.ACTION_SPACE_SIZE
         
+        # track what products we currently have
+        self.products = []
+        
         # track how many bases a ring station has buffered
         self.rings_buf_bases = [0, 0]
                 
@@ -946,7 +949,7 @@ class env_rcll():
         order = self.orders[action]
         stage = self.order_stage[action]
         # TODO: for the double orders
-        
+
         
         # correct processing_order to actual next machine
         to_machine, ring_pos, ring_col, ring_num = self.stage_to_machine(stage, order)
@@ -954,24 +957,26 @@ class env_rcll():
         # positional targets
         current_pos = self.robots[0]
         next_pos = self.machines[to_machine]
-            
-        ### update the robots position, implying it drove there
-        self.robots[0] = next_pos
         
         # now act probabilistic! later substitute with real data!
         # unavoidable time spend on moving to machine; adding (thus multiplying) up random varibles per meter
         distance = current_pos.distance(next_pos)
         time_driving = self.get_normal(distance * self.move_mean, distance * self.move_var)
-        # unavoidable time consumption; e.g. grap, place
-        time_mechanical = self.get_normal(self.grap_and_place_mean, self.grap_and_place_var)
+        # unavoidable time consumption; here we only grap and thus half
+        time_mechanical = self.get_normal(self.grap_and_place_mean / 2, self.grap_and_place_var / 2)
+        
+        # assume 1.5m travel distance around machine
         
         
         if stage == "BS":
-            # avoidable time spent on machine internal processing
+            # avoidable time spent on machine internal processing; BS is gaussian physical time
             time_wait = self.get_normal(self.machine_times["BS"][0], self.machine_times["BS"][1])
             
             # no reward for getting a base
             reward = 0
+            
+            # tracking what partial products we own, adding the base
+            self.products.append([order[0]])
             
         elif stage == "R1":
             pass
@@ -992,7 +997,10 @@ class env_rcll():
             pass
         
         
-        ### implying applying the base by transition to next stage
+        ### update the robots position, implying it drove there
+        self.robots[0] = next_pos
+        
+        ### implying getting the base by transition to next stage
         self.order_stage[action] = self.processing_order[self.processing_order.index(stage) + 1]
         
         ### apply the real time passed
@@ -1020,26 +1028,27 @@ if __name__ == "__main__":
     self = env_rcll(r)
     self.reset()
     
-    assert False
-    self.orders = [[1, 0, 0, 0, 2, 0, 0, 0, 1020], # @ 0006
+#    assert False
+    self.orders_full = [[1, 0, 0, 0, 2, 0, 0, 0, 1020], # @ 0006
                    [2, 3, 0, 0, 2, 0, 0, 0, 1020], # @ 0006
                    [1, 4, 1, 0, 2, 0, 0, 847, 1008], # @ 0239
                    [1, 1, 3, 4, 2, 0, 0, 677, 833], # @ 0006
                    [2, 0, 0, 0, 1, 0, 0, 420, 571], # @ 0268
                    [3, 0, 0, 0, 2, 1, 0, 639, 747], # @ 0403
                    [2, 0, 0, 0, 2, 0, 1, 840, 1020], # @ 0661
-                   [3, 2, 0, 0, 2, 0, 0, 709, 816]] # @ 0209
-#                   [0, 0, 0, 0, 0, 0, 0, 0, 0]]
+                   [3, 2, 0, 0, 2, 0, 0, 709, 816], # @ 0209
+                   [0, 0, 0, 0, 0, 0, 0, 0, 0]]
     self.order_stage[5] = [self.order_stage[5], "BS"]
-#    self.orders = [[1, 0, 0, 0, 2, 0, 0, 0, 1020], # @ 0006
-#                   [2, 3, 0, 0, 2, 0, 0, 0, 1020], # @ 0006
-#                   [0, 0, 0, 0, 0, 0, 0, 0, 0],
-#                   [1, 1, 3, 4, 2, 0, 0, 677, 833], # @ 0006
-#                   [0, 0, 0, 0, 0, 0, 0, 0, 0],
-#                   [0, 0, 0, 0, 0, 0, 0, 0, 0],
-#                   [0, 0, 0, 0, 0, 0, 0, 0, 0],
+    self.orders = [[1, 0, 0, 0, 2, 0, 0, 0, 1020], # @ 0006
+                   [2, 3, 0, 0, 2, 0, 0, 0, 1020], # @ 0006
+                   [0, 0, 0, 0, 0, 0, 0, 0, 0],
+                   [1, 1, 3, 4, 2, 0, 0, 677, 833], # @ 0006
+                   [0, 0, 0, 0, 0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0, 0, 0, 0, 0],
 #                   [3, 2, 0, 0, 2, 0, 0, 709, 816], # @ 0209
-#                   [0, 0, 0, 0, 0, 0, 0, 0, 0]]
+                   [0, 0, 0, 0, 0, 0, 0, 0, 0]]
     self.machines = {'CS1': field_pos(-3.5, 4.5),
                      'CS2': field_pos(2.5, 0.5),
                      'RS1': field_pos(-1.5, 2.5),
@@ -1063,6 +1072,15 @@ if __name__ == "__main__":
 #    get_observation(self)[0][:, :2].tolist() + [get_observation(self)[1][:2]]
 #    get_observation(self)[0] + [get_observation(self)[1]]
 
+    
+    data = []
+    for _ in range(5000):
+        smp = self.get_normal(self.grap_and_place_mean, self.grap_and_place_var)
+        data.append(smp)
+    plt.grid(True)
+    plt.hist(data, bins=25, density=True, alpha=0.6, color='g')
+    
+    
     
     observations = []
     for i in range(1, 1022):
