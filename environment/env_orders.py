@@ -564,14 +564,15 @@ class env_rcll():
             ring_pos = int(stage[1])
             ring_col = order[ring_pos]
             ring_num = 3 - order[1:4].count(0)
+            # early exit if ring does not exist
+            if ring_col == 0:
+                return to_machine, ring_pos, ring_col, ring_num
             
             # figure out where we can get it
             if ring_col in self.rings[0]:
                 to_machine = "RS1"
             elif ring_col in self.rings[1]:
                 to_machine = "RS2"
-            elif ring_col == 0:
-                return to_machine, ring_pos, ring_col, ring_num
             else:
                 assert False and "No such ring color!"
                 
@@ -603,6 +604,7 @@ class env_rcll():
         cont = processing.index(current_stage)
         
         for stage in processing[cont:]:
+            # TODO: remove FIN state! then finalize stage function!
             if stage == "FIN":
                 continue
             
@@ -743,7 +745,8 @@ class env_rcll():
             if E_reward_next == None:
                 E_reward_next = E_reward
             
-#            print("E_time: {} | E_time_next: {} | E_reward: {} | E_reward_next: {}".format(E_time, E_time_next, E_reward, E_reward_next))
+#            print("E_time: {} | E_time_next: {} | E_reward: {} | E_reward_next: {}".format(E_time, E_time_next, E_reward, E_reward_next))                
+#            print("Traveling at stage {} ({}) to machine {}, with covered distance: {} ({})".format(stage, cont, to_machine, distance, E_time))
         
         # based on Rulebook Ch. 5.8, we get only points for stages which are not later then the delivery window
         if self.time > order[-1]:
@@ -751,6 +754,33 @@ class env_rcll():
             E_reward_next = 0
         
         return E_time, E_time_next, E_reward, E_reward_next
+    
+    
+    def get_order_stage(idx):
+        # we note that stage always shows to the NEXT STEP
+        stage_best = self.processing_order[0]
+        
+        # loop through ongoing products
+        for product in self.products:
+            # loop through product and determine current stage
+            for i, part in enumerate(product):
+                # have a match and check if it is the highest stage jet
+                if self.orders[idx][i] == part and self.processing_order.index(stage_best) < i:
+                    stage_best = self.processing_order[i]
+        
+        # got best match now, just take the next stage for the actual result
+        stage_idx = self.processing_order.index(stage_best)
+        cnt = 1
+        next_part = self.orders[idx][stage_idx + cnt]
+        # need skip non-existent rings
+        while next_part == 0:
+            cnt += 1
+            next_part = self.orders[idx][stage_idx + cnt]
+        
+        stage_next = self.processing_order[stage_idx + cnt]
+        
+        return stage_next
+        
     
     def get_observation(self):
         
@@ -893,7 +923,8 @@ class env_rcll():
         self.orders_next_activation = 0
         self.orders_full = None # only used for RefBox, default behavoir creates orders on time based on declarations
         
-        # track what assembly step we are at
+        # track how many products have been delivered for an order
+        self.orders_delivered = [0] * self.ACTION_SPACE_SIZE
         self.order_stage = ["BS"] * self.ACTION_SPACE_SIZE
         
         # track what products we currently have
@@ -1029,7 +1060,7 @@ if __name__ == "__main__":
     self.reset()
     
 #    assert False
-    self.orders_full = [[1, 0, 0, 0, 2, 0, 0, 0, 1020], # @ 0006
+    self.orders = [[1, 0, 0, 0, 2, 0, 0, 0, 1020], # @ 0006
                    [2, 3, 0, 0, 2, 0, 0, 0, 1020], # @ 0006
                    [1, 4, 1, 0, 2, 0, 0, 847, 1008], # @ 0239
                    [1, 1, 3, 4, 2, 0, 0, 677, 833], # @ 0006
@@ -1039,7 +1070,7 @@ if __name__ == "__main__":
                    [3, 2, 0, 0, 2, 0, 0, 709, 816], # @ 0209
                    [0, 0, 0, 0, 0, 0, 0, 0, 0]]
     self.order_stage[5] = [self.order_stage[5], "BS"]
-    self.orders = [[1, 0, 0, 0, 2, 0, 0, 0, 1020], # @ 0006
+    self.orders_ = [[1, 0, 0, 0, 2, 0, 0, 0, 1020], # @ 0006
                    [2, 3, 0, 0, 2, 0, 0, 0, 1020], # @ 0006
                    [0, 0, 0, 0, 0, 0, 0, 0, 0],
                    [1, 1, 3, 4, 2, 0, 0, 677, 833], # @ 0006
@@ -1086,11 +1117,11 @@ if __name__ == "__main__":
     for i in range(1, 1022):
         self.time = i
         
-        observations.append(get_observation(self))
+        observations.append(self.get_observation())
         
     t_rewards = []
     for obs in observations:
-        t_rewards.append(obs[0][:, 0].tolist() + [obs[1][0]])
+        t_rewards.append(obs[0][:-1, 0].tolist() + [obs[1][0]])
     t_rewards = np.array(t_rewards).T.tolist()
     
     
