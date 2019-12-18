@@ -628,7 +628,7 @@ class env_rcll():
             distance += current_pos.distance(next_pos)
             current_pos = next_pos # we now made the step to next machine
             
-            # assume each step involves grappign and plaing a product at least once
+            # assume each step involves grapping and placing a product at least once
             wait += self.grap_and_place_mean
             
             ###### additional wait time per machine; assumed after we arrive and do process there
@@ -690,8 +690,8 @@ class env_rcll():
                 wait += self.machine_times["CS"][0] # for buffer cap first
                 wait += 3 * 2 # traveling around the machine
                 
-                # dispose to nearest RS for now
-                # TODO: optimize use; depending wheter we still can reuse those
+                # dispose base to nearest RS for now
+                # TODO: optimize use; depending wheter we still can reuse those; also account these bases in previous RS step?
                 distance_rs1 = current_pos.distance(self.machines["RS1"])
                 distance_rs2 = current_pos.distance(self.machines["RS2"])
                 wait += min(distance_rs1, distance_rs2) * 2 # 2 for back-forth
@@ -711,7 +711,7 @@ class env_rcll():
                 # comsidering delivery window; accounting for next E_time update
                 E_delivery = self.time + E_time + distance * self.move_mean + wait
                 if E_delivery < order[-2]:
-                    # function call without set delay for first call for order 1 out of 2
+                    # function call without set delay for first call for multi-order (so 1st out of 2)
                     if order[5] == 1 and delay == None:
                         reward += 20 # assume we will deliver in time, if we start earlier
                     else:
@@ -726,7 +726,7 @@ class env_rcll():
                     reward += 5 # late delivery
                 
             elif to_machine == "SS":
-                wait += 10 # estimate
+                wait += self.machine_times["SS"][0]
                 
                 reward -= 10 # listed cost
             
@@ -745,7 +745,7 @@ class env_rcll():
             if E_reward_next == None:
                 E_reward_next = E_reward
             
-#            print("E_time: {} | E_time_next: {} | E_reward: {} | E_reward_next: {}".format(E_time, E_time_next, E_reward, E_reward_next))                
+            print("{} | E_time: {} | E_time_next: {} | E_reward: {} | E_reward_next: {} | distance: {} | to_machine: {}".format(order, E_time, E_time_next, E_reward, E_reward_next, distance, to_machine))
 #            print("Traveling at stage {} ({}) to machine {}, with covered distance: {} ({})".format(stage, cont, to_machine, distance, E_time))
         
         # based on Rulebook Ch. 5.8, we get only points for stages which are not later then the delivery window
@@ -851,12 +851,13 @@ class env_rcll():
                 
                 # only consider the 2nd order when we still have time to do the mandratory one!
                 # until then we consider 1st order to be delivered on time
+                # This 
                 if self.time + E_time < order[-2]:
                     # update respective rewards as we are on time for 2nd order
                     E_multi_order[0] += E_reward3
                     E_multi_order[2] += E_time3
-                    E_time += E_time2
                     E_reward += E_reward2
+                    E_time += E_time2
                     
                     # when the first product is finished we have next the intermediate of the second
                     if current_stage == "FIN":
@@ -1104,12 +1105,12 @@ if __name__ == "__main__":
 #    get_observation(self)[0] + [get_observation(self)[1]]
 
     
-    data = []
-    for _ in range(5000):
-        smp = self.get_normal(self.grap_and_place_mean, self.grap_and_place_var)
-        data.append(smp)
-    plt.grid(True)
-    plt.hist(data, bins=25, density=True, alpha=0.6, color='g')
+#    data = []
+#    for _ in range(5000):
+#        smp = self.get_normal(self.grap_and_place_mean, self.grap_and_place_var)
+#        data.append(smp)
+#    plt.grid(True)
+#    plt.hist(data, bins=25, density=True, alpha=0.6, color='g')
     
     
     
@@ -1121,7 +1122,7 @@ if __name__ == "__main__":
         
     t_rewards = []
     for obs in observations:
-        t_rewards.append(obs[0][:-1, 0].tolist() + [obs[1][0]])
+        t_rewards.append(obs[0][:-1, 2].tolist() + [obs[1][2]])
     t_rewards = np.array(t_rewards).T.tolist()
     
     
@@ -1144,3 +1145,13 @@ if __name__ == "__main__":
     
     
     
+[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 49.0               | E_time_next: 49.0              | E_reward: 0  | E_reward_next: 0   | distance: 7.0              | to_machine: BS
+[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 167.74486174012745 | E_time_next: 49.0              | E_reward: 12 | E_reward_next: 0   | distance: 8.54400374531753 | to_machine: CS1
+[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 229.74486174012745 | E_time_next: 49.0              | E_reward: 32 | E_reward_next: 0   | distance: 6.0              | to_machine: DS
+
+[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 271.9559642910554  | E_time_next: 271.9559642910554 | E_reward: 0  | E_reward_next: 0   | distance: 3.60555127546398 | to_machine: BS
+[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 390.7008260311828  | E_time_next: 271.9559642910554 | E_reward: 12 | E_reward_next: 0   | distance: 8.54400374531753 | to_machine: CS1
+[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 452.7008260311828  | E_time_next: 271.9559642910554 | E_reward: 13 | E_reward_next: 0   | distance: 6.0              | to_machine: DS
+
+[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 271.0694170604642  | E_time_next: 271.0694170604642 | E_reward: -10| E_reward_next: -10 | distance: 3.16227766016837 | to_machine: SS
+[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 327.39397238080096 | E_time_next: 271.0694170604642 | E_reward: -9 | E_reward_next: -10 | distance: 3.16227766016837 | to_machine: DS
