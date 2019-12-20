@@ -312,7 +312,7 @@ class RefBox_recreated():
             order_cap_color = self.random.randint(1, 2) # 1 out of 2
             
             orders_full.append([order_base_color] + order_ring_colors + [0] * (3 - complexity) + 
-                          [order_cap_color] + [deliver_start, deliver_end])
+                          [order_cap_color] + [number-1] + [competitive] + [deliver_start, deliver_end])
         
         # Randomize number of required additional bases
         m_add_bases = self.randomize([1, 3])
@@ -334,6 +334,7 @@ class RefBox_recreated():
         competitive_order_id = self.random.randrange(len(potential_competitive_orders))
         modify = potential_competitive_orders[competitive_order_id] - 1
         order_declarations[modify][4] = 1 # set competitive
+        orders_full[modify][-3] = 1 # tracking same
         
         return machines, down_period, rings, ring_additional_bases, order_declarations, orders_full
 
@@ -491,7 +492,7 @@ class env_rcll():
             num_rings = C
         # enum rings blue = 1, green, oragne, yellow; cant have more then one of same ring
         ring_options = [x for x in range(1,5)]
-        self.random.shuffle(ring_options)        
+        self.random.shuffle(ring_options)
         rings = ring_options[:num_rings] + [0] * (3 - num_rings)
         
         # enum caps black = 1, grey
@@ -745,11 +746,11 @@ class env_rcll():
             if E_reward_next == None:
                 E_reward_next = E_reward
             
-            print("{} | E_time: {} | E_time_next: {} | E_reward: {} | E_reward_next: {} | distance: {} | to_machine: {}".format(order, E_time, E_time_next, E_reward, E_reward_next, distance, to_machine))
+#            print("{} | E_time: {} | E_time_next: {} | E_reward: {} | E_reward_next: {} | distance: {} | to_machine: {}".format(order, E_time, E_time_next, E_reward, E_reward_next, distance, to_machine))
 #            print("Traveling at stage {} ({}) to machine {}, with covered distance: {} ({})".format(stage, cont, to_machine, distance, E_time))
         
         # based on Rulebook Ch. 5.8, we get only points for stages which are not later then the delivery window
-        if self.time > order[-1]:
+        if self.time + E_time_next > order[-1]:
             E_reward = 0
             E_reward_next = 0
         
@@ -1104,6 +1105,7 @@ if __name__ == "__main__":
 #    get_observation(self)[0][:, :2].tolist() + [get_observation(self)[1][:2]]
 #    get_observation(self)[0] + [get_observation(self)[1]]
 
+    self.get_observation()
     
 #    data = []
 #    for _ in range(5000):
@@ -1122,22 +1124,22 @@ if __name__ == "__main__":
         
     t_rewards = []
     for obs in observations:
-        t_rewards.append(obs[0][:-1, 2].tolist() + [obs[1][2]])
+        t_rewards.append(obs[0][:, 0].tolist() + [obs[1][0]])
     t_rewards = np.array(t_rewards).T.tolist()
     
     
     t = range(1,1022)
-    labels = [r'$O_{}$'.format(x) for x in range(1,10)]
+    labels = [r'$O{}$'.format(x) for x in range(1,9)] + ["$O{6a}$"]
     o = 2
     
-    plt.figure(figsize=(15,7))
+    plt.figure(figsize=(30,14))
     for y, l in zip(t_rewards[o:], labels[o:]):
-        plt.plot(t, y, label=l, linewidth=3, alpha=0.9)
+        plt.plot(t, y, label=l, linewidth=3, alpha=0.7)
     plt.grid(True)
     plt.xlabel('time')
     plt.ylabel('reward')
     plt.legend(loc='best')
-    plt.show()
+    plt.savefig("/home/akimiya/_Master/rcll-rl_scheduler/tests/img/rewards_over_time_final5.png", bbox_inches='tight')
     
     plt.figure(figsize=(15,7))
     plt.grid(True)
@@ -1145,13 +1147,13 @@ if __name__ == "__main__":
     
     
     
-[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 49.0               | E_time_next: 49.0              | E_reward: 0  | E_reward_next: 0   | distance: 7.0              | to_machine: BS
-[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 167.74486174012745 | E_time_next: 49.0              | E_reward: 12 | E_reward_next: 0   | distance: 8.54400374531753 | to_machine: CS1
-[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 229.74486174012745 | E_time_next: 49.0              | E_reward: 32 | E_reward_next: 0   | distance: 6.0              | to_machine: DS
-
-[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 271.9559642910554  | E_time_next: 271.9559642910554 | E_reward: 0  | E_reward_next: 0   | distance: 3.60555127546398 | to_machine: BS
-[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 390.7008260311828  | E_time_next: 271.9559642910554 | E_reward: 12 | E_reward_next: 0   | distance: 8.54400374531753 | to_machine: CS1
-[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 452.7008260311828  | E_time_next: 271.9559642910554 | E_reward: 13 | E_reward_next: 0   | distance: 6.0              | to_machine: DS
-
-[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 271.0694170604642  | E_time_next: 271.0694170604642 | E_reward: -10| E_reward_next: -10 | distance: 3.16227766016837 | to_machine: SS
-[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 327.39397238080096 | E_time_next: 271.0694170604642 | E_reward: -9 | E_reward_next: -10 | distance: 3.16227766016837 | to_machine: DS
+#[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 49.0               | E_time_next: 49.0              | E_reward: 0  | E_reward_next: 0   | distance: 7.0              | to_machine: BS
+#[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 167.74486174012745 | E_time_next: 49.0              | E_reward: 12 | E_reward_next: 0   | distance: 8.54400374531753 | to_machine: CS1
+#[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 229.74486174012745 | E_time_next: 49.0              | E_reward: 32 | E_reward_next: 0   | distance: 6.0              | to_machine: DS
+#
+#[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 271.9559642910554  | E_time_next: 271.9559642910554 | E_reward: 0  | E_reward_next: 0   | distance: 3.60555127546398 | to_machine: BS
+#[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 390.7008260311828  | E_time_next: 271.9559642910554 | E_reward: 12 | E_reward_next: 0   | distance: 8.54400374531753 | to_machine: CS1
+#[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 452.7008260311828  | E_time_next: 271.9559642910554 | E_reward: 13 | E_reward_next: 0   | distance: 6.0              | to_machine: DS
+#
+#[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 271.0694170604642  | E_time_next: 271.0694170604642 | E_reward: -10| E_reward_next: -10 | distance: 3.16227766016837 | to_machine: SS
+#[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 327.39397238080096 | E_time_next: 271.0694170604642 | E_reward: -9 | E_reward_next: -10 | distance: 3.16227766016837 | to_machine: DS
