@@ -366,11 +366,28 @@ class env_rcll():
         
         
         # rewards
-        self.SENSELESS_ACTION = -20
-        self.CORRECT_STEP = 10
-        self.DISCART_ORDER = -2
-        self.INCORRECT_STEP = -10
-        self.FINISHED_ORDER = 20
+        # taken from globals.clp but need consisntency with rulebook anyway
+        self.PRODUCTION_POINTS_ADDITIONAL_BASE =  2
+        self.PRODUCTION_POINTS_FINISH_CC0_STEP =  5
+        self.PRODUCTION_POINTS_FINISH_CC1_STEP = 10
+        self.PRODUCTION_POINTS_FINISH_CC2_STEP = 20
+        self.PRODUCTION_POINTS_FINISH_C1_PRECAP = 10
+        self.PRODUCTION_POINTS_FINISH_C2_PRECAP = 30
+        self.PRODUCTION_POINTS_FINISH_C3_PRECAP = 80
+        self.PRODUCTION_POINTS_MOUNT_CAP = 10
+        self.PRODUCTION_POINTS_RETRIEVE_CAP = 2
+        self.PRODUCTION_POINTS_DELIVERY  = 20
+        self.PRODUCTION_POINTS_DELIVERY_TOO_LATE = 5
+        self.PRODUCTION_POINTS_DELIVERY_WRONG = 1
+        self.PRODUCTION_DELIVER_MAX_LATENESS_TIME = 10
+        self.PRODUCTION_POINTS_COMPETITIVE_FIRST_BONUS = 10
+        self.PRODUCTION_POINTS_COMPETITIVE_SECOND_DEDUCTION = 10 # not used: assuming symetric to BONUS
+        self.PRODUCTION_POINTS_SS_RETRIEVAL = -10
+#        self.SENSELESS_ACTION = -20
+#        self.CORRECT_STEP = 10
+#        self.DISCART_ORDER = -2
+#        self.INCORRECT_STEP = -10
+#        self.FINISHED_ORDER = 20
         
         ############################ PROBABILITIES ############################
         # distribution for movement
@@ -645,18 +662,18 @@ class env_rcll():
                     need_bases = 2
                     
                     # reward for CC2
-                    reward += 20
+                    reward += self.PRODUCTION_POINTS_FINISH_CC2_STEP
                                             
                 elif ring_col == self.ring_additional_bases[1]: # 1 bases
                     need_bases = 1
                     
                     # reward for CC1
-                    reward += 10
+                    reward += self.PRODUCTION_POINTS_FINISH_CC1_STEP
                 else:
                     need_bases = 0
                     
                     # reward for CC0
-                    reward += 5
+                    reward += self.PRODUCTION_POINTS_FINISH_CC0_STEP
                 
                 # check if need gather additional bases; need minus already buffered bases
                 missing_bases = need_bases - self.rings_buf_bases[int(to_machine[2]) - 1]
@@ -668,26 +685,26 @@ class env_rcll():
                     wait += self.grap_and_place_mean * missing_bases # assumption on lost time grapping bases
                     
                     # additional points for base feeded into RS
-                    reward += 2 * missing_bases
+                    reward += self.PRODUCTION_POINTS_ADDITIONAL_BASE * missing_bases
                 
                 # for final ring, depending on number of rings
                 if ring_num == ring_pos:
                     if ring_num == 1:
                         # reward for C1
-                        reward += 10
+                        reward += self.PRODUCTION_POINTS_FINISH_C1_PRECAP
                     elif ring_num == 2:
                         # reward for C2
-                        reward += 30
+                        reward += self.PRODUCTION_POINTS_FINISH_C2_PRECAP
                     elif ring_num == 3:
                         # reward for C3
-                        reward += 80
+                        reward += self.PRODUCTION_POINTS_FINISH_C3_PRECAP
                         
             elif to_machine == "CS1" or to_machine == "CS2":
                 # buffer cap
                 wait += self.machine_times["CS"][0]
 #                wait += 3 * 2 # traveling around the machine can be done during buffering
                 # reward for buffering a cap
-                reward += 2
+                reward += self.PRODUCTION_POINTS_RETRIEVE_CAP
                 
                 # dispose base to nearest RS for now
                 # TODO: optimize use, depending on active orders; also account these bases in previous RS step?
@@ -700,7 +717,7 @@ class env_rcll():
                 # mount cap
                 wait += self.machine_times["CS"][0]
                 # reward fo mount cap
-                reward += 10
+                reward += self.PRODUCTION_POINTS_MOUNT_CAP
                 
             elif to_machine == "DS":
                 wait += self.machine_times["DS"][0]
@@ -711,22 +728,22 @@ class env_rcll():
                 if E_delivery < order[-2]:
                     # function call without set delay for first call for multi-order (so 1st out of 2)
                     if order[5] == 1 and delay == None:
-                        reward += 20 # assume we will deliver in time, if we start earlier
+                        reward += self.PRODUCTION_POINTS_DELIVERY # assume we will deliver in time, if we start earlier
                     else:
-                        reward += 1 # wrong delivery => default
+                        reward += self.PRODUCTION_POINTS_DELIVERY_WRONG # wrong delivery => default
                 elif E_delivery < order[-1]:
-                    reward += 20 # (correct) delivery
-                elif E_delivery < order[-1] + 10:
+                    reward += self.PRODUCTION_POINTS_DELIVERY # (correct) delivery
+                elif E_delivery < order[-1] + self.PRODUCTION_DELIVER_MAX_LATENESS_TIME:
                     tmp = 15 - (E_delivery - order[-1]) * 1.5 + 5
                     assert tmp >= 5 and tmp <= 20
                     reward += tmp # delayed delivery
                 else:
-                    reward += 5 # late delivery
+                    reward += self.PRODUCTION_POINTS_DELIVERY_TOO_LATE # late delivery
                 
             elif to_machine == "SS":
                 wait += self.machine_times["SS"][0]
                 
-                reward -= 10 # listed cost
+                reward -= self.PRODUCTION_POINTS_SS_RETRIEVAL # listed cost
             
             # accumulate time; assume 1m per 2s
             E_time += distance * self.move_mean + wait
@@ -821,12 +838,12 @@ class env_rcll():
             if order[6] == 1 and E_delivery <= order[-1]:
                 # if we deliver before window we likely first and get the bonus points
                 if E_delivery < order[-2]:
-                    comp_bonus = 10
+                    comp_bonus = self.PRODUCTION_POINTS_COMPETITIVE_FIRST_BONUS
                 else:
                     # compute bonus points for competitive
                     ratio_scaling = 3.53 # selected as a constant so that we get 3/4 of points at 1/4 window
                     tmp = 1 + math.exp(ratio_scaling)
-                    width_scaling = (-20 * tmp) / (2 - tmp) # so that we have about +-10 on each side
+                    width_scaling = (-2 * self.PRODUCTION_POINTS_COMPETITIVE_FIRST_BONUS * tmp) / (2 - tmp) # so that we have about +-10 on each side
                     length_scaling = (order[-1] - order[-2]) / 2
                     
                     at_time = E_delivery - order[-2] - length_scaling # we make sure we scale inside the window
