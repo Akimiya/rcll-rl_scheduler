@@ -357,7 +357,7 @@ class env_rcll():
         self.normalize = normalize
         
         # order of steps needed to fulfill an oder; R is ring 1 to 3, FIN is completed
-        self.processing_order = ["BS", "R1", "R2", "R3", "CS", "DS", "FIN"]
+        self.processing_order = ["BS", "R1", "R2", "R3", "CS", "DS"]
         
         
         # if passed use game code as similar to the real thing as possible
@@ -605,9 +605,6 @@ class env_rcll():
         cont = processing.index(current_stage)
         
         for stage in processing[cont:]:
-            # TODO: remove FIN state! then finalize stage function!
-            if stage == "FIN":
-                continue
             
             distance = 0 # the traveled/movement distance 
             wait = 0 # machine processing time + arm-movement delay
@@ -625,7 +622,6 @@ class env_rcll():
             
             ##### get specific machine position and compute travling distance
             next_pos = self.machines[to_machine]
-#                print("at: {}, to: {}, distance: {}".format(current_pos, next_pos, current_pos.distance(next_pos)))
             distance += current_pos.distance(next_pos)
             current_pos = next_pos # we now made the step to next machine
             
@@ -662,7 +658,7 @@ class env_rcll():
                     # reward for CC0
                     reward += 5
                 
-                # check if need gather additional bases; need minus have
+                # check if need gather additional bases; need minus already buffered bases
                 missing_bases = need_bases - self.rings_buf_bases[int(to_machine[2]) - 1]
                 if missing_bases >= 1:
                     # we condsider an additional back and forth to a BS from current RS *per* missing base
@@ -687,19 +683,19 @@ class env_rcll():
                         reward += 80
                         
             elif to_machine == "CS1" or to_machine == "CS2":
-                # additional time to buffer
-                wait += self.machine_times["CS"][0] # for buffer cap first
-                wait += 3 * 2 # traveling around the machine
+                # buffer cap
+                wait += self.machine_times["CS"][0]
+#                wait += 3 * 2 # traveling around the machine can be done during buffering
+                # reward for buffering a cap
+                reward += 2
                 
                 # dispose base to nearest RS for now
-                # TODO: optimize use; depending wheter we still can reuse those; also account these bases in previous RS step?
+                # TODO: optimize use, depending on active orders; also account these bases in previous RS step?
                 distance_rs1 = current_pos.distance(self.machines["RS1"])
                 distance_rs2 = current_pos.distance(self.machines["RS2"])
                 wait += min(distance_rs1, distance_rs2) * 2 # 2 for back-forth
                 wait += self.grap_and_place_mean # assumption on lost time grapping clear bases
                 
-                # reward for buffering a cap
-                reward += 2
                 
                 # mount cap
                 wait += self.machine_times["CS"][0]
@@ -710,6 +706,7 @@ class env_rcll():
                 wait += self.machine_times["DS"][0]
                 
                 # comsidering delivery window; accounting for next E_time update
+                # TODO: fix for double order again!
                 E_delivery = self.time + E_time + distance * self.move_mean + wait
                 if E_delivery < order[-2]:
                     # function call without set delay for first call for multi-order (so 1st out of 2)
@@ -736,7 +733,7 @@ class env_rcll():
             
             # accumulate reward, as long game not over (expected)
             E_reward += reward
-            # TODO: scale or consider variance for more fluent drop to 0 points (as we "might" make it in time)
+            # TODO: scale or consider variance for more fluent drop to 0 points (as we "might" make it in time)?
             if self.time + E_time > 1020:
                 E_reward = 0
             
@@ -807,7 +804,8 @@ class env_rcll():
             current_stage = self.order_stage[idx]
             # we can have list in case of 2 requested products; work with first initially
             if type(current_stage) == list:
-                current_stage2 = current_stage[1]
+#                current_stage_SS = current_stage[2]
+                current_stage_manual = current_stage[1]
                 current_stage = current_stage[0]
             
             # TODO: consider multiple robots (need outside self-loop with robot selection). search closest free robot?
@@ -820,15 +818,19 @@ class env_rcll():
             
             # consider competitive orders, when we deliver on time; apply sigmoid-like scaling for delivery window
             E_delivery = self.time + E_time
-            if order[6] == 1 and E_delivery >= order[-2] and E_delivery <= order[-1]:
-                # compute bonus points for competitive
-                ratio_scaling = 3.53 # selected as a constant so that we get 3/4 of points at 1/4 window
-                tmp = 1 + math.exp(ratio_scaling)
-                width_scaling = (-20 * tmp) / (2 - tmp) # so that we have about +-10 on each side
-                length_scaling = (order[-1] - order[-2]) / 2
-                
-                at_time = E_delivery - order[-2] - length_scaling # we make sure we scale inside the window
-                comp_bonus = width_scaling / (1 + math.exp((ratio_scaling * at_time) / length_scaling)) - width_scaling/2
+            if order[6] == 1 and E_delivery <= order[-1]:
+                # if we deliver before window we likely first and get the bonus points
+                if E_delivery < order[-2]:
+                    comp_bonus = 10
+                else:
+                    # compute bonus points for competitive
+                    ratio_scaling = 3.53 # selected as a constant so that we get 3/4 of points at 1/4 window
+                    tmp = 1 + math.exp(ratio_scaling)
+                    width_scaling = (-20 * tmp) / (2 - tmp) # so that we have about +-10 on each side
+                    length_scaling = (order[-1] - order[-2]) / 2
+                    
+                    at_time = E_delivery - order[-2] - length_scaling # we make sure we scale inside the window
+                    comp_bonus = width_scaling / (1 + math.exp((ratio_scaling * at_time) / length_scaling)) - width_scaling/2
                 
                 # add to the reward
                 E_reward += comp_bonus
@@ -840,9 +842,9 @@ class env_rcll():
             # we will definitely need to build one order normally; other can be normal or from SS
             if order[5] == 1:
                 # case 1) we make the whole process again starting from last machine
-                E_time2, E_time_next2, E_reward2, E_reward_next2 = self.expectation_order(order, current_stage2, self.machines["DS"], E_time)
+                E_time2, E_time_next2, E_reward2, E_reward_next2 = self.expectation_order(order, current_stage_manual, self.machines["DS"], E_time)
                 # case 2) take one from the SS; consider it as extra sub-order
-                E_time3, E_time_next3, E_reward3, E_reward_next3 = self.expectation_order(order, "SS", self.machines["DS"], E_time, ["SS", "DS", "FIN"])
+                E_time3, E_time_next3, E_reward3, E_reward_next3 = self.expectation_order(order, "SS", self.machines["DS"], E_time, ["SS", "DS"])
                 
                 # assemble the extra vector before updating E's; delivery window feature already present in other
                 E_multi_order = [E_reward, 
@@ -1139,7 +1141,14 @@ if __name__ == "__main__":
     plt.xlabel('time')
     plt.ylabel('reward')
     plt.legend(loc='best')
-    plt.savefig("/home/akimiya/_Master/rcll-rl_scheduler/tests/img/rewards_over_time_final5.png", bbox_inches='tight')
+    plt.savefig("/home/akimiya/_Master/rcll-rl_scheduler/tests/img/rewards_over_time_final8.png", bbox_inches='tight')
+    
+    
+    
+    
+    
+    
+    
     
     plt.figure(figsize=(15,7))
     plt.grid(True)
