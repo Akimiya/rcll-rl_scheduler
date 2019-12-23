@@ -348,7 +348,7 @@ class env_rcll():
     def __init__(self, RefBox_recreated=None, normalize=False):
         self.random = SystemRandom() # local random number generator
         self.TOTAL_NUM_ORDERS = 8 # warning: currently does not scale everything
-        self.ACTION_SPACE_SIZE = self.TOTAL_NUM_ORDERS + 1 # plus one slot for double amount order
+        self.ACTION_SPACE_SIZE = self.TOTAL_NUM_ORDERS + 2 # plus one additional double-slot for double amount (6th) order
         
         # there are 3 rings, so 4 repeats
         self.ORDER_NORM_FACTOR = [] # old: [3, 4, 4, 4, 2, 1, 1, 1020, 1020]
@@ -597,8 +597,11 @@ class env_rcll():
         # decide which CS
         elif stage == "CS":
             cap_col = order[4]
+            # TODO: we can actually decide which CS has which caps!
+            # here assumption that CS1 has grey
             if cap_col == 2:
                 to_machine = "CS1"
+            # here assumption that CS2 has black
             elif cap_col == 1:
                 to_machine = "CS2"
             else:
@@ -610,8 +613,11 @@ class env_rcll():
         
         return to_machine, ring_pos, ring_col, ring_num
     
-    def expectation_order(self, order, current_stage, current_pos, delay=None, processing=None):
-        E_time = 0 if delay == None else delay # delay will be 0 if first product is FIN
+    def expectation_order(self, order, current_stage, current_pos, first_E_time=0, processing=None):
+#        current_pos = self.robots[0] # TODO: remove since debug
+        too_late = False
+        
+        E_time = 0
         E_reward = 0
         E_time_next = None
         E_reward_next = None
@@ -624,7 +630,7 @@ class env_rcll():
         for stage in processing[cont:]:
             
             distance = 0 # the traveled/movement distance 
-            wait = 0 # machine processing time + arm-movement delay
+            wait = 0 # machine processing time + arm-movement
             reward = 0 # reward for that step
             # for safety of reusing
             need_bases = None
@@ -723,14 +729,9 @@ class env_rcll():
                 wait += self.machine_times["DS"][0]
                 
                 # comsidering delivery window; accounting for next E_time update
-                # TODO: fix for double order again!
-                E_delivery = self.time + E_time + distance * self.move_mean + wait
+                E_delivery = self.time + E_time + distance * self.move_mean + wait + first_E_time
                 if E_delivery < order[-2]:
-                    # function call without set delay for first call for multi-order (so 1st out of 2)
-                    if order[5] == 1 and delay == None:
-                        reward += self.PRODUCTION_POINTS_DELIVERY # assume we will deliver in time, if we start earlier
-                    else:
-                        reward += self.PRODUCTION_POINTS_DELIVERY_WRONG # wrong delivery => default
+                    reward += self.PRODUCTION_POINTS_DELIVERY_WRONG # wrong delivery
                 elif E_delivery < order[-1]:
                     reward += self.PRODUCTION_POINTS_DELIVERY # (correct) delivery
                 elif E_delivery < order[-1] + self.PRODUCTION_DELIVER_MAX_LATENESS_TIME:
@@ -743,30 +744,31 @@ class env_rcll():
             elif to_machine == "SS":
                 wait += self.machine_times["SS"][0]
                 
-                reward -= self.PRODUCTION_POINTS_SS_RETRIEVAL # listed cost
+                reward += self.PRODUCTION_POINTS_SS_RETRIEVAL # listed cost
             
             # accumulate time; assume 1m per 2s
             E_time += distance * self.move_mean + wait
             
-            # accumulate reward, as long game not over (expected)
-            E_reward += reward
-            # TODO: scale or consider variance for more fluent drop to 0 points (as we "might" make it in time)?
-            if self.time + E_time > 1020:
-                E_reward = 0
-            
+
+            # based on Rulebook Ch. 5.8, we get only points for *non-DS* stages which are not later then the delivery window
+            # for the DS stage we just need to finish before game ends
+            E_delivery = self.time + E_time + first_E_time
+            if not too_late and (to_machine != "DS" and E_delivery <= order[-1]) or (to_machine == "DS" and E_delivery <= RefBox_recreated.PRODUCTION_TIME):
+                # accumulate reward
+                E_reward += reward
+            else:
+                # preventing giving "late delivery" reward while already missing out on previous stages
+                # TODO: what do official rules say in such a case?
+                too_late = True
+                            
             # save the step to next machine
             if E_time_next == None:
                 E_time_next = E_time
             if E_reward_next == None:
                 E_reward_next = E_reward
             
-#            print("{} | E_time: {} | E_time_next: {} | E_reward: {} | E_reward_next: {} | distance: {} | to_machine: {}".format(order, E_time, E_time_next, E_reward, E_reward_next, distance, to_machine))
+#            print("{:<32} | E_time: {:>6.02f} | E_time_next: {:>6.02f} | E_reward: {:>3} | E_reward_next: {:>2} | distance: {:>5.02f} | to_machine: {}".format(str(order), E_time, E_time_next, E_reward, E_reward_next, distance, to_machine))
 #            print("Traveling at stage {} ({}) to machine {}, with covered distance: {} ({})".format(stage, cont, to_machine, distance, E_time))
-        
-        # based on Rulebook Ch. 5.8, we get only points for stages which are not later then the delivery window
-        if self.time + E_time_next > order[-1]:
-            E_reward = 0
-            E_reward_next = 0
         
         return E_time, E_time_next, E_reward, E_reward_next
     
@@ -800,12 +802,11 @@ class env_rcll():
     def get_observation(self):
         
         # expected time and reward
-        options = len(self.orders)
-        E_rewards = [None] * options # accumulated for full order
-        E_times = [None] * options # accumulated for full order
-        E_rewards_next = [None] * options # next step
-        E_times_next = [None] * options # next step
-        E_multi_order = [0, 0, 0, 0] # additional parameters for the one order of two products
+        E_rewards = [None] * self.TOTAL_NUM_ORDERS # accumulated for full order
+        E_times = [None] * self.TOTAL_NUM_ORDERS # accumulated for full order
+        E_rewards_next = [None] * self.TOTAL_NUM_ORDERS # next step
+        E_times_next = [None] * self.TOTAL_NUM_ORDERS # next step
+        E_multi_order = [0, 0, 0, 0] * 2 # additional parameters for the one order of two products
         
         for idx, order in enumerate(self.orders):
             # have no order here yet
@@ -821,7 +822,7 @@ class env_rcll():
             current_stage = self.order_stage[idx]
             # we can have list in case of 2 requested products; work with first initially
             if type(current_stage) == list:
-#                current_stage_SS = current_stage[2]
+                current_stage_SS = current_stage[2]
                 current_stage_manual = current_stage[1]
                 current_stage = current_stage[0]
             
@@ -855,36 +856,37 @@ class env_rcll():
             
             # TODO: consider the case 1) in E_time influencing E_reward, as both need to happen in delivery window
             # TODO: case 2) also not working properly
-            # consider if order need mupltiple products
+            # consider if order need mupltiple products; assumption that at most have one per game!
             # we will definitely need to build one order normally; other can be normal or from SS
             if order[5] == 1:
-                # case 1) we make the whole process again starting from last machine
-                E_time2, E_time_next2, E_reward2, E_reward_next2 = self.expectation_order(order, current_stage_manual, self.machines["DS"], E_time)
-                # case 2) take one from the SS; consider it as extra sub-order
-                E_time3, E_time_next3, E_reward3, E_reward_next3 = self.expectation_order(order, "SS", self.machines["DS"], E_time, ["SS", "DS"])
+                # if the first product is already finished EXPECTATION VALUES SHOULD BE ZERO! and take actual roboter position
+                if current_stage == "FIN":
+                    pos = current_pos
+                else:
+                    pos = self.machines["DS"] # continue after first delivery at DS
                 
-                # assemble the extra vector before updating E's; delivery window feature already present in other
-                E_multi_order = [E_reward, 
-                                 E_reward_next,
-                                 E_time,
-                                 E_time_next]
+                # case 1) we make the whole process again; consider it as extra sub-order
+                E_time_manual, E_time_next_manual, E_reward_manual, E_reward_next_manual = self.expectation_order(order, current_stage_manual, pos, first_E_time=E_time)
+                # case 2) take the 2nd order from the SS; consider it as extra sub-order
+                E_time_SS, E_time_next_SS, E_reward_SS, E_reward_next_SS = self.expectation_order(order, current_stage_SS, pos, first_E_time=E_time, processing=["SS", "DS"])
                 
-                # only consider the 2nd order when we still have time to do the mandratory one!
-                # until then we consider 1st order to be delivered on time
-                # This 
-                if self.time + E_time < order[-2]:
-                    # update respective rewards as we are on time for 2nd order
-                    E_multi_order[0] += E_reward3
-                    E_multi_order[2] += E_time3
-                    E_reward += E_reward2
-                    E_time += E_time2
-                    
-                    # when the first product is finished we have next the intermediate of the second
-                    if current_stage == "FIN":
-                        E_reward_next = E_reward_next2
-                        E_time_next = E_time_next2
-                        E_multi_order[1] = E_reward_next3
-                        E_multi_order[3] = E_time_next3
+                # assemble the extra vector before updating E's; delivery window feature already present in initial order
+                # TODO: change back to E_time
+                E_multi_order = [0 + E_reward_manual,
+                                 E_reward_next + E_reward_next_manual,
+                                 E_time + E_time_manual,
+                                 E_time_next + E_time_next_manual,
+                                 # same for SS path
+                                 0 + E_reward_SS,
+                                 E_reward_next + E_reward_next_SS,
+                                 E_time + E_time_SS,
+                                 E_time_next + E_time_next_SS]
+#                # when the first product is finished we have next the intermediate of the second
+#                if current_stage == "FIN":
+#                    E_reward_next = E_reward_next2
+#                    E_time_next = E_time_next2
+#                    E_multi_order[1] = E_reward_next3
+#                    E_multi_order[3] = E_time_next3
             
             
             ##### for each order we add to vector
@@ -1088,9 +1090,10 @@ if __name__ == "__main__":
                    [2, 0, 0, 0, 1, 0, 0, 420, 571], # @ 0268
                    [3, 0, 0, 0, 2, 1, 0, 639, 747], # @ 0403
                    [2, 0, 0, 0, 2, 0, 1, 840, 1020], # @ 0661
-                   [3, 2, 0, 0, 2, 0, 0, 709, 816], # @ 0209
-                   [0, 0, 0, 0, 0, 0, 0, 0, 0]]
-    self.order_stage[5] = [self.order_stage[5], "BS"]
+                   [3, 2, 0, 0, 2, 0, 0, 709, 816]] # @ 0209
+    self.order_stage[5] = [self.order_stage[5], "BS", "SS"]
+#    self.robots[0] = self.machines["BS"]
+#    self.order_stage[5] = ["CS", "BS", "SS"]
     self.orders_ = [[1, 0, 0, 0, 2, 0, 0, 0, 1020], # @ 0006
                    [2, 3, 0, 0, 2, 0, 0, 0, 1020], # @ 0006
                    [0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -1142,26 +1145,35 @@ if __name__ == "__main__":
         observations.append(self.get_observation())
         
     t_rewards = []
+    v = 0
     for obs in observations:
-        t_rewards.append(obs[0][:, 0].tolist() + [obs[1][0]])
+        t_rewards.append(obs[0][:, v].tolist() + [obs[1][v]] + [obs[1][v + 4]])
     t_rewards = np.array(t_rewards).T.tolist()
     
     
     t = range(1,1022)
-    labels = [r'$O{}$'.format(x) for x in range(1,9)] + ["$O{6a}$"]
-    o = 2
+    labels = [r'$O{}$'.format(x) for x in range(1,9)] + ["$O{6a}$"] + ["$O{6b}$"]
+    o = 5
+    
+#    plt.figure(figsize=(30,14))
+#    for y, l in zip(t_rewards[o:], labels[o:]):
+#        plt.plot(t, y, label=l, linewidth=3, alpha=0.7)
+#    plt.grid(True)
+#    plt.xlabel('time')
+#    plt.ylabel('reward')
+#    plt.legend(loc='best')
+#    plt.savefig("/home/akimiya/_Master/rcll-rl_scheduler/tests/img/rewards_over_time_final8.png", bbox_inches='tight')
     
     plt.figure(figsize=(30,14))
-    for y, l in zip(t_rewards[o:], labels[o:]):
-        plt.plot(t, y, label=l, linewidth=3, alpha=0.7)
+    plt.plot(t, t_rewards[5], label=labels[5], linewidth=3, alpha=0.7)
+    plt.plot(t, t_rewards[8], label=labels[8], linewidth=3, alpha=0.7)
+    plt.plot(t, t_rewards[9], label=labels[9], linewidth=3, alpha=0.7)
     plt.grid(True)
+    plt.ylim(-10, 50)
     plt.xlabel('time')
     plt.ylabel('reward')
     plt.legend(loc='best')
-    plt.savefig("/home/akimiya/_Master/rcll-rl_scheduler/tests/img/rewards_over_time_final8.png", bbox_inches='tight')
-    
-    
-    
+    plt.savefig("/home/akimiya/_Master/rcll-rl_scheduler/tests/img/rewards_over_time_final13.png", bbox_inches='tight')
     
     
     
@@ -1171,15 +1183,3 @@ if __name__ == "__main__":
     plt.grid(True)
     plt.plot(t_rewards[8])
     
-    
-    
-#[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 49.0               | E_time_next: 49.0              | E_reward: 0  | E_reward_next: 0   | distance: 7.0              | to_machine: BS
-#[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 167.74486174012745 | E_time_next: 49.0              | E_reward: 12 | E_reward_next: 0   | distance: 8.54400374531753 | to_machine: CS1
-#[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 229.74486174012745 | E_time_next: 49.0              | E_reward: 32 | E_reward_next: 0   | distance: 6.0              | to_machine: DS
-#
-#[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 271.9559642910554  | E_time_next: 271.9559642910554 | E_reward: 0  | E_reward_next: 0   | distance: 3.60555127546398 | to_machine: BS
-#[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 390.7008260311828  | E_time_next: 271.9559642910554 | E_reward: 12 | E_reward_next: 0   | distance: 8.54400374531753 | to_machine: CS1
-#[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 452.7008260311828  | E_time_next: 271.9559642910554 | E_reward: 13 | E_reward_next: 0   | distance: 6.0              | to_machine: DS
-#
-#[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 271.0694170604642  | E_time_next: 271.0694170604642 | E_reward: -10| E_reward_next: -10 | distance: 3.16227766016837 | to_machine: SS
-#[3, 0, 0, 0, 2, 1, 0, 639, 747] | E_time: 327.39397238080096 | E_time_next: 271.0694170604642 | E_reward: -9 | E_reward_next: -10 | distance: 3.16227766016837 | to_machine: DS
