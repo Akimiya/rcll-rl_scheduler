@@ -614,7 +614,7 @@ class env_rcll():
         return to_machine, ring_pos, ring_col, ring_num
     
     def expectation_order(self, order, current_stage, current_pos, first_E_time=0, processing=None):
-#        current_pos = self.robots[0] # TODO: remove since debug
+        current_pos = self.robots[0] # TODO: remove since debug
         too_late = False
         
         E_time = 0
@@ -636,6 +636,7 @@ class env_rcll():
             need_bases = None
             missing_bases = None
             next_pos = None
+            E_delivery = None
             
             # correct processing_order to actual next machine
             to_machine, ring_pos, ring_col, ring_num = self.stage_to_machine(stage, order)
@@ -644,6 +645,7 @@ class env_rcll():
                 continue
             
             ##### get specific machine position and compute travling distance
+            # TODO: consider distance=0 when moving from RS1 to RS1 for different color ring
             next_pos = self.machines[to_machine]
             distance += current_pos.distance(next_pos)
             current_pos = next_pos # we now made the step to next machine
@@ -685,6 +687,7 @@ class env_rcll():
                 missing_bases = need_bases - self.rings_buf_bases[int(to_machine[2]) - 1]
                 if missing_bases >= 1:
                     # we condsider an additional back and forth to a BS from current RS *per* missing base
+                    # TODO: consider preemptive buffering of cap and getting one base there
                     extra = current_pos.distance(self.machines["BS"]) * 2 # 2 for back-forth
                     
                     distance += extra * missing_bases
@@ -753,13 +756,17 @@ class env_rcll():
             # based on Rulebook Ch. 5.8, we get only points for *non-DS* stages which are not later then the delivery window
             # for the DS stage we just need to finish before game ends
             E_delivery = self.time + E_time + first_E_time
-            if not too_late and (to_machine != "DS" and E_delivery <= order[-1]) or (to_machine == "DS" and E_delivery <= RefBox_recreated.PRODUCTION_TIME):
+            print(E_delivery)
+            if not too_late and (
+                    (to_machine != "DS" and E_delivery <= order[-1]) or 
+                    (to_machine == "DS" and E_delivery <= RefBox_recreated.PRODUCTION_TIME)):
                 # accumulate reward
                 E_reward += reward
             else:
                 # preventing giving "late delivery" reward while already missing out on previous stages
-                # TODO: what do official rules say in such a case?
+                # TODO: what do official rules say in such a case? can also deliver unfinished product?
                 too_late = True
+                print(too_late)
                             
             # save the step to next machine
             if E_time_next == None:
@@ -767,7 +774,7 @@ class env_rcll():
             if E_reward_next == None:
                 E_reward_next = E_reward
             
-#            print("{:<32} | E_time: {:>6.02f} | E_time_next: {:>6.02f} | E_reward: {:>3} | E_reward_next: {:>2} | distance: {:>5.02f} | to_machine: {}".format(str(order), E_time, E_time_next, E_reward, E_reward_next, distance, to_machine))
+            print("{:<32} | E_time: {:>6.02f} | E_time_next: {:>6.02f} | E_reward: {:>3} | E_reward_next: {:>2} | distance: {:>5.02f} | to_machine: {}".format(str(order), E_time, E_time_next, E_reward, E_reward_next, distance, to_machine))
 #            print("Traveling at stage {} ({}) to machine {}, with covered distance: {} ({})".format(stage, cont, to_machine, distance, E_time))
         
         return E_time, E_time_next, E_reward, E_reward_next
@@ -1153,7 +1160,7 @@ if __name__ == "__main__":
     
     t = range(1,1022)
     labels = [r'$O{}$'.format(x) for x in range(1,9)] + ["$O{6a}$"] + ["$O{6b}$"]
-    o = 5
+    o = 0
     
 #    plt.figure(figsize=(30,14))
 #    for y, l in zip(t_rewards[o:], labels[o:]):
@@ -1162,14 +1169,15 @@ if __name__ == "__main__":
 #    plt.xlabel('time')
 #    plt.ylabel('reward')
 #    plt.legend(loc='best')
-#    plt.savefig("/home/akimiya/_Master/rcll-rl_scheduler/tests/img/rewards_over_time_final8.png", bbox_inches='tight')
-    
+#    plt.savefig("/home/akimiya/_Master/rcll-rl_scheduler/tests/img/rewards_over_time_final13.png", bbox_inches='tight')
+#    
     plt.figure(figsize=(30,14))
-    plt.plot(t, t_rewards[5], label=labels[5], linewidth=3, alpha=0.7)
-    plt.plot(t, t_rewards[8], label=labels[8], linewidth=3, alpha=0.7)
-    plt.plot(t, t_rewards[9], label=labels[9], linewidth=3, alpha=0.7)
+    plt.plot(t, t_rewards[2], label=labels[2], linewidth=3, alpha=0.7)
+#    plt.plot(t, t_rewards[5], label=labels[5], linewidth=3, alpha=0.7)
+#    plt.plot(t, t_rewards[8], label=labels[8], linewidth=3, alpha=0.7)
+#    plt.plot(t, t_rewards[9], label=labels[9], linewidth=3, alpha=0.7)
     plt.grid(True)
-    plt.ylim(-10, 50)
+#    plt.ylim(-10, 50)
     plt.xlabel('time')
     plt.ylabel('reward')
     plt.legend(loc='best')
