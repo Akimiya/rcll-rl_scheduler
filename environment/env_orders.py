@@ -614,7 +614,6 @@ class env_rcll():
         return to_machine, ring_pos, ring_col, ring_num
     
     def expectation_order(self, order, current_stage, current_pos, first_E_time=0, processing=None):
-        current_pos = self.robots[0] # TODO: remove since debug
         too_late = False
         
         E_time = 0
@@ -656,6 +655,7 @@ class env_rcll():
             ###### additional wait time per machine; assumed after we arrive and do process there
             ###### computation of reward for this step
             if to_machine == "BS":
+                # TODO: can safe wait time in ordering from BS by sending request before arrive there
                 wait += self.machine_times["BS"][0]
                 
                 # no reward for getting a base
@@ -745,6 +745,7 @@ class env_rcll():
                     reward += self.PRODUCTION_POINTS_DELIVERY_TOO_LATE # late delivery
                 
             elif to_machine == "SS":
+                # TODO: can safe time in ordering from SS by sending request before arrive there
                 wait += self.machine_times["SS"][0]
                 
                 reward += self.PRODUCTION_POINTS_SS_RETRIEVAL # listed cost
@@ -756,7 +757,6 @@ class env_rcll():
             # based on Rulebook Ch. 5.8, we get only points for *non-DS* stages which are not later then the delivery window
             # for the DS stage we just need to finish before game ends
             E_delivery = self.time + E_time + first_E_time
-            print(E_delivery)
             if not too_late and (
                     (to_machine != "DS" and E_delivery <= order[-1]) or 
                     (to_machine == "DS" and E_delivery <= RefBox_recreated.PRODUCTION_TIME)):
@@ -764,9 +764,8 @@ class env_rcll():
                 E_reward += reward
             else:
                 # preventing giving "late delivery" reward while already missing out on previous stages
-                # TODO: what do official rules say in such a case? can also deliver unfinished product?
+                # TODO: what do official rules say in such a case? can also deliver unfinished product? is it start or end of machine process which applies to intermediate points?
                 too_late = True
-                print(too_late)
                             
             # save the step to next machine
             if E_time_next == None:
@@ -774,7 +773,7 @@ class env_rcll():
             if E_reward_next == None:
                 E_reward_next = E_reward
             
-            print("{:<32} | E_time: {:>6.02f} | E_time_next: {:>6.02f} | E_reward: {:>3} | E_reward_next: {:>2} | distance: {:>5.02f} | to_machine: {}".format(str(order), E_time, E_time_next, E_reward, E_reward_next, distance, to_machine))
+#            print("{:<32} | E_time: {:>6.02f} | E_time_next: {:>6.02f} | E_delivery: {:>6.02f} | E_reward: {:>3} | E_reward_next: {:>2} | distance: {:>5.02f} | to_machine: {}".format(str(order), E_time, E_time_next, E_delivery, E_reward, E_reward_next, distance, to_machine))
 #            print("Traveling at stage {} ({}) to machine {}, with covered distance: {} ({})".format(stage, cont, to_machine, distance, E_time))
         
         return E_time, E_time_next, E_reward, E_reward_next
@@ -837,20 +836,23 @@ class env_rcll():
             # robots are reasonably fast that pathing, thus which robot, is a more minor problem
             current_pos = self.robots[0]
             
-            # TODO: consider switching insode the expectations
             # TODO: Expectation of when already have fitting partial product => consider in step
             E_time, E_time_next, E_reward, E_reward_next = self.expectation_order(order, current_stage, current_pos)
             
             # consider competitive orders, when we deliver on time; apply sigmoid-like scaling for delivery window
             E_delivery = self.time + E_time
-            if order[6] == 1 and E_delivery <= order[-1]:
+            if order[6] == 1:
                 # if we deliver before window we likely first and get the bonus points
                 if E_delivery < order[-2]:
                     comp_bonus = self.PRODUCTION_POINTS_COMPETITIVE_FIRST_BONUS
+                # if we deliver after window we likely second and get the penalty
+                elif E_delivery > order[-1]:
+                    comp_bonus = - self.PRODUCTION_POINTS_COMPETITIVE_SECOND_DEDUCTION
                 else:
                     # compute bonus points for competitive
                     ratio_scaling = 3.53 # selected as a constant so that we get 3/4 of points at 1/4 window
                     tmp = 1 + math.exp(ratio_scaling)
+                    # TODO: scale also with PRODUCTION_POINTS_COMPETITIVE_SECOND_DEDUCTION
                     width_scaling = (-2 * self.PRODUCTION_POINTS_COMPETITIVE_FIRST_BONUS * tmp) / (2 - tmp) # so that we have about +-10 on each side
                     length_scaling = (order[-1] - order[-2]) / 2
                     
@@ -859,35 +861,37 @@ class env_rcll():
                 
                 # add to the reward
                 E_reward += comp_bonus
+                if E_reward < 0:
+                    E_reward = 0
             
             
-            # TODO: consider the case 1) in E_time influencing E_reward, as both need to happen in delivery window
-            # TODO: case 2) also not working properly
             # consider if order need mupltiple products; assumption that at most have one per game!
             # we will definitely need to build one order normally; other can be normal or from SS
             if order[5] == 1:
                 # if the first product is already finished EXPECTATION VALUES SHOULD BE ZERO! and take actual roboter position
+                # TODO: need propper delivery tracking variable
                 if current_stage == "FIN":
                     pos = current_pos
                 else:
                     pos = self.machines["DS"] # continue after first delivery at DS
                 
-                # case 1) we make the whole process again; consider it as extra sub-order
+                # TODO: consider propper multi-roboter optimization to get better overlap
+                # case 1) we make the whole process again; consider it as extra sub-order; impacts reward earlier in timeline
                 E_time_manual, E_time_next_manual, E_reward_manual, E_reward_next_manual = self.expectation_order(order, current_stage_manual, pos, first_E_time=E_time)
                 # case 2) take the 2nd order from the SS; consider it as extra sub-order
                 E_time_SS, E_time_next_SS, E_reward_SS, E_reward_next_SS = self.expectation_order(order, current_stage_SS, pos, first_E_time=E_time, processing=["SS", "DS"])
                 
                 # assemble the extra vector before updating E's; delivery window feature already present in initial order
-                # TODO: change back to E_time
-                E_multi_order = [0 + E_reward_manual,
-                                 E_reward_next + E_reward_next_manual,
+                E_multi_order = [E_reward + E_reward_manual,
+                                 None,
                                  E_time + E_time_manual,
-                                 E_time_next + E_time_next_manual,
+                                 None,
                                  # same for SS path
-                                 0 + E_reward_SS,
-                                 E_reward_next + E_reward_next_SS,
+                                 E_reward + E_reward_SS,
+                                 None,
                                  E_time + E_time_SS,
-                                 E_time_next + E_time_next_SS]
+                                 None]
+
 #                # when the first product is finished we have next the intermediate of the second
 #                if current_stage == "FIN":
 #                    E_reward_next = E_reward_next2
@@ -896,11 +900,11 @@ class env_rcll():
 #                    E_multi_order[3] = E_time_next3
             
             
-            ##### for each order we add to vector
-            E_times[idx] = E_time
+            ##### for each order we add to vector; competitive deductions cant go below 0 points but SS do..
             E_rewards[idx] = E_reward
-            E_times_next[idx] = E_time_next
             E_rewards_next[idx] = E_reward_next
+            E_times[idx] = E_time
+            E_times_next[idx] = E_time_next
         
         
         # formulate all in a matrix
@@ -1172,16 +1176,16 @@ if __name__ == "__main__":
 #    plt.savefig("/home/akimiya/_Master/rcll-rl_scheduler/tests/img/rewards_over_time_final13.png", bbox_inches='tight')
 #    
     plt.figure(figsize=(30,14))
-    plt.plot(t, t_rewards[2], label=labels[2], linewidth=3, alpha=0.7)
-#    plt.plot(t, t_rewards[5], label=labels[5], linewidth=3, alpha=0.7)
-#    plt.plot(t, t_rewards[8], label=labels[8], linewidth=3, alpha=0.7)
-#    plt.plot(t, t_rewards[9], label=labels[9], linewidth=3, alpha=0.7)
+#    plt.plot(t, t_rewards[6], label=labels[6], linewidth=3, alpha=0.7)
+    plt.plot(t, t_rewards[5], label=labels[5], linewidth=3, alpha=0.7)
+    plt.plot(t, t_rewards[8], label=labels[8], linewidth=3, alpha=0.7)
+    plt.plot(t, t_rewards[9], label=labels[9], linewidth=3, alpha=0.7)
     plt.grid(True)
 #    plt.ylim(-10, 50)
     plt.xlabel('time')
     plt.ylabel('reward')
     plt.legend(loc='best')
-    plt.savefig("/home/akimiya/_Master/rcll-rl_scheduler/tests/img/rewards_over_time_final13.png", bbox_inches='tight')
+    plt.savefig("/home/akimiya/_Master/rcll-rl_scheduler/tests/img/rewards_over_time_final17.png", bbox_inches='tight')
     
     
     
