@@ -776,33 +776,48 @@ class env_rcll():
 #            print("{:<32} | E_time: {:>6.02f} | E_time_next: {:>6.02f} | E_delivery: {:>6.02f} | E_reward: {:>3} | E_reward_next: {:>2} | distance: {:>5.02f} | to_machine: {}".format(str(order), E_time, E_time_next, E_delivery, E_reward, E_reward_next, distance, to_machine))
 #            print("Traveling at stage {} ({}) to machine {}, with covered distance: {} ({})".format(stage, cont, to_machine, distance, E_time))
         
-        return E_time, E_time_next, E_reward, E_reward_next
+        return E_reward, E_reward_next, E_time, E_time_next
     
     
     def get_order_stage(idx):
-        # we note that stage always shows to the NEXT STEP
-        stage_best = self.processing_order[0]
+        # TODO: handle double order..
+        if self.orders_delivered[idx] >= 1:
+            return "FIN" # this order is already complete and delivered
+        
+        # note that stage always shows to the NEXT STEP, so make local shifted copy
+        processing_order = [None] + self.processing_order
+        stage_best = None
         
         # loop through ongoing products
         for product in self.products:
             # loop through product and determine current stage
+#            print("looking at", product)
+            prev_best = stage_best
+            # TODO: use some python partial list matching functions.. we cant have future steps anyway..
             for i, part in enumerate(product):
-                # have a match and check if it is the highest stage jet
-                if self.orders[idx][i] == part and self.processing_order.index(stage_best) < i:
-                    stage_best = self.processing_order[i]
+                # check if we have a match
+#                print(self.orders[idx][i], "=?=", part)
+                if self.orders[idx][i] == part:
+                    # check if it is the highest stage jet
+                    if processing_order.index(stage_best) < i + 1:
+                        stage_best = processing_order[i + 1]
+                else:
+                    # check if the product is of a future stage
+                    if len(product) != i + 1:
+                        stage_best = prev_best
+                    break # to have exact match
         
-        # got best match now, just take the next stage for the actual result
-        stage_idx = self.processing_order.index(stage_best)
-        cnt = 1
-        next_part = self.orders[idx][stage_idx + cnt]
+        # got best match now, we need the next stage for the actual result
+        stage_idx = processing_order.index(stage_best) # shifted now!
+        stage_next = self.processing_order[stage_idx]
         # need skip non-existent rings
-        while next_part == 0:
-            cnt += 1
-            next_part = self.orders[idx][stage_idx + cnt]
-        
-        stage_next = self.processing_order[stage_idx + cnt]
+        if stage_next[0] == "R" and self.orders[idx][stage_idx] == 0:
+            stage_next = "CS"
         
         return stage_next
+
+for idx, _ in enumerate(self.orders):
+    print(get_order_stage(idx))
         
     
     def get_observation(self):
@@ -837,7 +852,7 @@ class env_rcll():
             current_pos = self.robots[0]
             
             # TODO: Expectation of when already have fitting partial product => consider in step
-            E_time, E_time_next, E_reward, E_reward_next = self.expectation_order(order, current_stage, current_pos)
+            E_reward, E_reward_next, E_time, E_time_next = self.expectation_order(order, current_stage, current_pos)
             
             # consider competitive orders, when we deliver on time; apply sigmoid-like scaling for delivery window
             E_delivery = self.time + E_time
@@ -859,7 +874,7 @@ class env_rcll():
                     at_time = E_delivery - order[-2] - length_scaling # we make sure we scale inside the window
                     comp_bonus = width_scaling / (1 + math.exp((ratio_scaling * at_time) / length_scaling)) - width_scaling/2
                 
-                # add to the reward
+                # add to the reward; can't be negative 
                 E_reward += comp_bonus
                 if E_reward < 0:
                     E_reward = 0
@@ -868,36 +883,35 @@ class env_rcll():
             # consider if order need mupltiple products; assumption that at most have one per game!
             # we will definitely need to build one order normally; other can be normal or from SS
             if order[5] == 1:
-                # if the first product is already finished EXPECTATION VALUES SHOULD BE ZERO! and take actual roboter position
-                # TODO: need propper delivery tracking variable
-                if current_stage == "FIN":
+                # if the first product is already finished take actual roboter position
+                if self.orders_delivered[idx] >= 1:
                     pos = current_pos
                 else:
                     pos = self.machines["DS"] # continue after first delivery at DS
                 
                 # TODO: consider propper multi-roboter optimization to get better overlap
                 # case 1) we make the whole process again; consider it as extra sub-order; impacts reward earlier in timeline
-                E_time_manual, E_time_next_manual, E_reward_manual, E_reward_next_manual = self.expectation_order(order, current_stage_manual, pos, first_E_time=E_time)
+                E_reward_manual, E_reward_next_manual, E_time_manual, E_time_next_manual = self.expectation_order(order, current_stage_manual, pos, first_E_time=E_time)
                 # case 2) take the 2nd order from the SS; consider it as extra sub-order
-                E_time_SS, E_time_next_SS, E_reward_SS, E_reward_next_SS = self.expectation_order(order, current_stage_SS, pos, first_E_time=E_time, processing=["SS", "DS"])
+                E_reward_SS, E_reward_next_SS, E_time_SS, E_time_next_SS = self.expectation_order(order, current_stage_SS, pos, first_E_time=E_time, processing=["SS", "DS"])
                 
                 # assemble the extra vector before updating E's; delivery window feature already present in initial order
                 E_multi_order = [E_reward + E_reward_manual,
-                                 None,
+                                 E_reward_next,
                                  E_time + E_time_manual,
-                                 None,
+                                 E_time_next,
                                  # same for SS path
                                  E_reward + E_reward_SS,
-                                 None,
+                                 E_reward_next,
                                  E_time + E_time_SS,
-                                 None]
+                                 E_time_next]
 
-#                # when the first product is finished we have next the intermediate of the second
-#                if current_stage == "FIN":
-#                    E_reward_next = E_reward_next2
-#                    E_time_next = E_time_next2
-#                    E_multi_order[1] = E_reward_next3
-#                    E_multi_order[3] = E_time_next3
+                # when the first product is finished we have next the intermediate of the second
+                if self.orders_delivered[idx] >= 1:
+                    E_multi_order[1] = E_reward_next_manual
+                    E_multi_order[3] = E_time_next_manual
+                    E_multi_order[1+4] = E_reward_next_SS
+                    E_multi_order[3+4] = E_time_next_SS
             
             
             ##### for each order we add to vector; competitive deductions cant go below 0 points but SS do..
@@ -958,8 +972,7 @@ class env_rcll():
         self.orders_full = None # only used for RefBox, default behavoir creates orders on time based on declarations
         
         # track how many products have been delivered for an order
-        self.orders_delivered = [0] * self.ACTION_SPACE_SIZE
-        self.order_stage = ["BS"] * self.ACTION_SPACE_SIZE
+        self.orders_delivered = [0] * self.TOTAL_NUM_ORDERS
         
         # track what products we currently have
         self.products = []
@@ -1166,15 +1179,16 @@ if __name__ == "__main__":
     labels = [r'$O{}$'.format(x) for x in range(1,9)] + ["$O{6a}$"] + ["$O{6b}$"]
     o = 0
     
-#    plt.figure(figsize=(30,14))
-#    for y, l in zip(t_rewards[o:], labels[o:]):
-#        plt.plot(t, y, label=l, linewidth=3, alpha=0.7)
-#    plt.grid(True)
-#    plt.xlabel('time')
-#    plt.ylabel('reward')
-#    plt.legend(loc='best')
-#    plt.savefig("/home/akimiya/_Master/rcll-rl_scheduler/tests/img/rewards_over_time_final13.png", bbox_inches='tight')
-#    
+    plt.figure(figsize=(30,14))
+    for y, l in zip(t_rewards[o:], labels[o:]):
+        plt.plot(t, y, label=l, linewidth=3, alpha=0.7)
+    plt.grid(True)
+    plt.xlabel('time')
+    plt.ylabel('reward')
+    plt.legend(loc='best')
+    plt.savefig("/home/akimiya/_Master/rcll-rl_scheduler/tests/img/rewards_over_time_final18.png", bbox_inches='tight')
+
+
     plt.figure(figsize=(30,14))
 #    plt.plot(t, t_rewards[6], label=labels[6], linewidth=3, alpha=0.7)
     plt.plot(t, t_rewards[5], label=labels[5], linewidth=3, alpha=0.7)
@@ -1185,7 +1199,7 @@ if __name__ == "__main__":
     plt.xlabel('time')
     plt.ylabel('reward')
     plt.legend(loc='best')
-    plt.savefig("/home/akimiya/_Master/rcll-rl_scheduler/tests/img/rewards_over_time_final17.png", bbox_inches='tight')
+    plt.savefig("/home/akimiya/_Master/rcll-rl_scheduler/tests/img/rewards_over_time_final18.png", bbox_inches='tight')
     
     
     
