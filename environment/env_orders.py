@@ -781,8 +781,21 @@ class env_rcll():
     
     def get_order_stage(self, idx):
         # TODO: handle double order..
-        if self.orders_delivered[idx] >= 1:
+        # note if we need multiple same we need account for those inside self.products
+        double_order = True if self.orders[idx][5] == 1 else False
+        
+        if self.orders_delivered[idx] == 0:
+            pass # default, mainly to lead all other cases to assertion
+        elif double_order and self.orders_delivered[idx] == 2:
+            # just need maximum of two delivered!
+            return ["FIN", "FIN", "FIN"]
+        elif double_order and self.orders_delivered[idx] == 1:
+            # just one is finised and we need check second
+            return ["FIN", "FIN", "FIN"]
+        elif self.orders_delivered[idx] == 1:
             return "FIN" # this order is already complete and delivered
+        else:
+            assert False and "wrong number of delivered orders!"
         
         stage_best = -1
         # loop through ongoing products
@@ -809,9 +822,12 @@ class env_rcll():
             stage_best += 1
             stage_next = self.processing_order[stage_best + 1]
         
-        return stage_next
+        # TODO: implement actual functionality
+        if double_order:
+            stage_next = [stage_next, "BS", "SS"]
         
-    
+        return stage_next
+  
     def get_observation(self):
         
         # expected time and reward
@@ -835,9 +851,9 @@ class env_rcll():
             current_stage = self.get_order_stage(idx)
             # we can have list in case of 2 requested products; work with first initially
             if type(current_stage) == list:
-                current_stage_SS = current_stage[2]
                 current_stage_manual = current_stage[1]
-                current_stage = current_stage[0]
+                current_stage_SS = current_stage[2]
+                current_stage = current_stage[0] # overwriting
             
             # TODO: consider multiple robots (need outside self-loop with robot selection). search closest free robot?
             # robots are reasonably fast that pathing, thus which robot, is a more minor problem
@@ -888,6 +904,7 @@ class env_rcll():
                 E_reward_SS, E_reward_next_SS, E_time_SS, E_time_next_SS = self.expectation_order(order, current_stage_SS, pos, first_E_time=E_time, processing=["SS", "DS"])
                 
                 # assemble the extra vector before updating E's; delivery window feature already present in initial order
+                # TODO: the _next parameters do not switch over to the needed versions..
                 E_multi_order = [E_reward + E_reward_manual,
                                  E_reward_next,
                                  E_time + E_time_manual,
@@ -1016,8 +1033,11 @@ class env_rcll():
         
         ### we assume selecting from one of the orders and computing/returning real-world-like intermediate step
         assert action >= 0 and action <= self.ACTION_SPACE_SIZE - 1
-        order = self.orders[action]
-        stage = self.get_order_stage(action)
+        # TODO: convert action to order index we want to advance
+        idx = action
+        
+        order = self.orders[idx]
+        stage = self.get_order_stage(idx)
         # TODO: for the double orders
 
         
@@ -1061,7 +1081,9 @@ class env_rcll():
             pass
             
         elif stage == "DS":
-            pass
+            
+            
+            assert self.orders_delivered[idx] <= 2 # we may never deliver more then 2
             
         elif stage == "SS":
             pass
@@ -1187,7 +1209,7 @@ if __name__ == "__main__":
     plt.xlabel('time')
     plt.ylabel('reward')
     plt.legend(loc='best')
-    plt.savefig("/home/akimiya/_Master/rcll-rl_scheduler/tests/img/rewards_over_time_final18.png", bbox_inches='tight')
+    plt.savefig("/home/akimiya/_Master/rcll-rl_scheduler/tests/img/rewards_over_time_final20.png", bbox_inches='tight')
     
     
     
