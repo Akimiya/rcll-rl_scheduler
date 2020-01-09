@@ -779,45 +779,37 @@ class env_rcll():
         return E_reward, E_reward_next, E_time, E_time_next
     
     
-    def get_order_stage(idx):
+    def get_order_stage(self, idx):
         # TODO: handle double order..
         if self.orders_delivered[idx] >= 1:
             return "FIN" # this order is already complete and delivered
         
-        # note that stage always shows to the NEXT STEP, so make local shifted copy
-        processing_order = [None] + self.processing_order
-        stage_best = None
-        
+        stage_best = -1
         # loop through ongoing products
         for product in self.products:
             # loop through product and determine current stage
-#            print("looking at", product)
             prev_best = stage_best
-            # TODO: use some python partial list matching functions.. we cant have future steps anyway..
             for i, part in enumerate(product):
                 # check if we have a match
-#                print(self.orders[idx][i], "=?=", part)
                 if self.orders[idx][i] == part:
                     # check if it is the highest stage jet
-                    if processing_order.index(stage_best) < i + 1:
-                        stage_best = processing_order[i + 1]
+                    if stage_best < i:
+                        assert stage_best + 1 == i # functional check that have increments of 1
+                        stage_best = i
                 else:
-                    # check if the product is of a future stage
-                    if len(product) != i + 1:
-                        stage_best = prev_best
+                    # if someting is wrong we can instantly reset to old, as partial matches don't help
+                    stage_best = prev_best
                     break # to have exact match
         
-        # got best match now, we need the next stage for the actual result
-        stage_idx = processing_order.index(stage_best) # shifted now!
-        stage_next = self.processing_order[stage_idx]
+        # got best match now, we need the next stage for the actual result; -1 gives us the start
+        stage_next = self.processing_order[stage_best + 1]
         # need skip non-existent rings
-        if stage_next[0] == "R" and self.orders[idx][stage_idx] == 0:
-            stage_next = "CS"
+        while stage_next[0] == "R" and self.orders[idx][stage_best + 1] == 0:
+            # looks like empy ring slot, try next
+            stage_best += 1
+            stage_next = self.processing_order[stage_best + 1]
         
         return stage_next
-
-for idx, _ in enumerate(self.orders):
-    print(get_order_stage(idx))
         
     
     def get_observation(self):
@@ -840,7 +832,7 @@ for idx, _ in enumerate(self.orders):
             
             # account for partial processed products => in step() (update self.order_stage for all)
             # we start in the order processing pipeline from the step it currently is in
-            current_stage = self.order_stage[idx]
+            current_stage = self.get_order_stage(idx)
             # we can have list in case of 2 requested products; work with first initially
             if type(current_stage) == list:
                 current_stage_SS = current_stage[2]
@@ -1025,7 +1017,7 @@ for idx, _ in enumerate(self.orders):
         ### we assume selecting from one of the orders and computing/returning real-world-like intermediate step
         assert action >= 0 and action <= self.ACTION_SPACE_SIZE - 1
         order = self.orders[action]
-        stage = self.order_stage[action]
+        stage = self.get_order_stage(action)
         # TODO: for the double orders
 
         
@@ -1078,9 +1070,6 @@ for idx, _ in enumerate(self.orders):
         ### update the robots position, implying it drove there
         self.robots[0] = next_pos
         
-        ### implying getting the base by transition to next stage
-        self.order_stage[action] = self.processing_order[self.processing_order.index(stage) + 1]
-        
         ### apply the real time passed
         self.time += time_driving + time_mechanical + time_wait
         
@@ -1115,9 +1104,8 @@ if __name__ == "__main__":
                    [3, 0, 0, 0, 2, 1, 0, 639, 747], # @ 0403
                    [2, 0, 0, 0, 2, 0, 1, 840, 1020], # @ 0661
                    [3, 2, 0, 0, 2, 0, 0, 709, 816]] # @ 0209
-    self.order_stage[5] = [self.order_stage[5], "BS", "SS"]
+    self.products = []
 #    self.robots[0] = self.machines["BS"]
-#    self.order_stage[5] = ["CS", "BS", "SS"]
     self.orders_ = [[1, 0, 0, 0, 2, 0, 0, 0, 1020], # @ 0006
                    [2, 3, 0, 0, 2, 0, 0, 0, 1020], # @ 0006
                    [0, 0, 0, 0, 0, 0, 0, 0, 0],
