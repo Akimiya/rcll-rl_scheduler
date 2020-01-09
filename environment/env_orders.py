@@ -827,13 +827,13 @@ class env_rcll():
             stage_next = [stage_next, "BS", "SS"]
         
         return stage_next
-  
+
     def get_observation(self):
         
         # expected time and reward
         E_rewards = [None] * self.TOTAL_NUM_ORDERS # accumulated for full order
-        E_times = [None] * self.TOTAL_NUM_ORDERS # accumulated for full order
         E_rewards_next = [None] * self.TOTAL_NUM_ORDERS # next step
+        E_times = [None] * self.TOTAL_NUM_ORDERS # accumulated for full order
         E_times_next = [None] * self.TOTAL_NUM_ORDERS # next step
         E_multi_order = [0, 0, 0, 0] * 2 # additional parameters for the one order of two products
         
@@ -897,30 +897,27 @@ class env_rcll():
                 else:
                     pos = self.machines["DS"] # continue after first delivery at DS
                 
-                # TODO: consider propper multi-roboter optimization to get better overlap
-                # case 1) we make the whole process again; consider it as extra sub-order; impacts reward earlier in timeline
+                # potential overlap will be enabled in the current stage, as E_times will be lower
+                # case 1) we make the whole process again; consider it as extra sub-order; needs to follow original order
                 E_reward_manual, E_reward_next_manual, E_time_manual, E_time_next_manual = self.expectation_order(order, current_stage_manual, pos, first_E_time=E_time)
-                # case 2) take the 2nd order from the SS; consider it as extra sub-order
-                E_reward_SS, E_reward_next_SS, E_time_SS, E_time_next_SS = self.expectation_order(order, current_stage_SS, pos, first_E_time=E_time, processing=["SS", "DS"])
+                # case 2) take the 2nd order from the SS; consider it as extra sub-order; no need to finish other
+                E_reward_SS, E_reward_next_SS, E_time_SS, E_time_next_SS = self.expectation_order(order, current_stage_SS, current_pos, processing=["SS", "DS"])
                 
                 # assemble the extra vector before updating E's; delivery window feature already present in initial order
-                # TODO: the _next parameters do not switch over to the needed versions..
                 E_multi_order = [E_reward + E_reward_manual,
                                  E_reward_next,
                                  E_time + E_time_manual,
                                  E_time_next,
                                  # same for SS path
-                                 E_reward + E_reward_SS,
-                                 E_reward_next,
-                                 E_time + E_time_SS,
-                                 E_time_next]
+                                 E_reward_SS,
+                                 E_reward_next_SS,
+                                 E_time_SS,
+                                 E_time_next_SS]
 
                 # when the first product is finished we have next the intermediate of the second
                 if self.orders_delivered[idx] >= 1:
                     E_multi_order[1] = E_reward_next_manual
                     E_multi_order[3] = E_time_next_manual
-                    E_multi_order[1+4] = E_reward_next_SS
-                    E_multi_order[3+4] = E_time_next_SS
             
             
             ##### for each order we add to vector; competitive deductions cant go below 0 points but SS do..
@@ -1170,6 +1167,23 @@ if __name__ == "__main__":
 #    plt.grid(True)
 #    plt.hist(data, bins=25, density=True, alpha=0.6, color='g')
     
+#self.products = [[],
+# [-1],
+# [3, 2],
+# [1, 2, 1, 0, 2],
+# [1, 2, 1],
+# [2, 0, 0, 0, 2],
+# [1, 1, 3],
+# [2],
+# [1, 1]]
+#BS
+#R1
+#BS
+#R3
+#CS
+#BS
+#DS
+#CS
     
     
     observations = []
@@ -1205,11 +1219,11 @@ if __name__ == "__main__":
     plt.plot(t, t_rewards[8], label=labels[8], linewidth=3, alpha=0.7)
     plt.plot(t, t_rewards[9], label=labels[9], linewidth=3, alpha=0.7)
     plt.grid(True)
-#    plt.ylim(-10, 50)
+    plt.ylim(-10, 50)
     plt.xlabel('time')
     plt.ylabel('reward')
     plt.legend(loc='best')
-    plt.savefig("/home/akimiya/_Master/rcll-rl_scheduler/tests/img/rewards_over_time_final20.png", bbox_inches='tight')
+    plt.savefig("/home/akimiya/_Master/rcll-rl_scheduler/tests/img/rewards_over_time_final21.png", bbox_inches='tight')
     
     
     
