@@ -784,26 +784,17 @@ class env_rcll():
     
     
     def get_order_stage(self, idx, custom_products=None):
-        assert self.orders_delivered[idx] >= 0 and 2 <= self.orders_delivered[idx]
-        # TODO: handle double order..
-        # note that if we need multiple same we need account for those inside self.products
-        double_order = True if self.orders[idx][5] == 1 else False
-        double_order_out = [None, "BS", "SS"] # default
+        double_order = True if self.orders[idx][5] == 1 else False            
+        
+        assert (self.orders_delivered[idx] >= 0 and 1 <= self.orders_delivered[idx]) or (
+                self.orders_delivered[idx] >= 0 and 2 <= self.orders_delivered[idx] and double_order)
         
         if double_order and self.orders_delivered[idx] == 2:
-            # just need maximum of two delivered!
+            # need maximum of two delivered
             return ["FIN", "FIN", "FIN"]
-        elif double_order and self.orders_delivered[idx] == 1:
-            # just one is finised and we need check second
-            if self.orders_delivered_SS == -1:
-                # means we dedicated to SS and already delivered normal
-                return ["FIN", "FIN", "DS"]
-            elif self.orders_delivered_SS == 1:
-                # means we delivered the SS order but not rest; so only normal allowed
-                double_order_out[1] = "FIN"
-                double_order_out[2] = "FIN"
         elif self.orders_delivered[idx] == 1:
-            return "FIN" # this order is already complete and delivered
+            # this order is already complete and delivered
+            return "FIN"
         
         
         stage_best = -1
@@ -833,18 +824,7 @@ class env_rcll():
         
         
         if double_order:
-            if self.orders_delivered_SS == 1 and self.orders_delivered[idx] == 1:
-                # fill blank in case we already delivered a SS version
-                double_order_out[0] = stage_next 
-            elif self.orders_delivered_SS == 0:
-                # here need to check if we have a second matching product for parallel 
-                # we only know that we started the 2nd normal after we delivered the first!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-                double_order_out[0] = stage_next
-                double_order_out[1] = "TODO"
-            else:
-                assert False and "Something not right?"
-            
-            return double_order_out
+            return [stage_next, self.double_order_stage_manual, self.double_order_stage_SS]
         else:
             return stage_next
 
@@ -999,12 +979,12 @@ class env_rcll():
         
         # track how many products have been delivered for an order
         self.orders_delivered = [0] * self.TOTAL_NUM_ORDERS
-        # extra parameter tracking use of the SS order; -1 when requested; 1 when delivered
-        self.orders_delivered_SS = 0
+        # extra parameter tracking the multi order stages for the two extra options
         # while normally we only continue from an existing product, double orders can request same base again once
-        self.double_order_extra = -1
+        self.double_order_stage_manual = "BS"
+        self.double_order_stage_SS = "SS"
         
-        # track what products we currently have
+        # track what products we currently have; the additional options for double order dont show here
         self.products = []
         
         # track how many bases a ring station has buffered
@@ -1059,9 +1039,8 @@ class env_rcll():
         
         order = self.orders[idx]
         stage = self.get_order_stage(idx)
-        # TODO: for the double orders
+        # TODO: for the double orders; we need be able to detect if we use a possible O_6 base for another one
         # TODO: manage the joker of creating an additional base in case we select both O_6 and O_6b 
-        self.double_order_extra = -1
         
         # correct processing_order to actual next machine
         to_machine, ring_pos, ring_col, ring_num = self.stage_to_machine(stage, order)
@@ -1103,9 +1082,9 @@ class env_rcll():
             pass
             
         elif stage == "DS":
+            pass
             
-            
-            assert self.orders_delivered[idx] <= 2 # we may never deliver more then 2
+
             
         elif stage == "SS":
             
