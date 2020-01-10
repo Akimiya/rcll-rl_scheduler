@@ -891,33 +891,22 @@ class env_rcll():
             # consider if order need mupltiple products; assumption that at most have one per game!
             # we will definitely need to build one order normally; other can be normal or from SS
             if order[5] == 1:
-                # if the first product is already finished take actual roboter position
-                if self.orders_delivered[idx] >= 1:
-                    pos = current_pos
-                else:
-                    pos = self.machines["DS"] # continue after first delivery at DS
-                
-                # potential overlap will be enabled in the current stage, as E_times will be lower
-                # case 1) we make the whole process again; consider it as extra sub-order; needs to follow original order
-                E_reward_manual, E_reward_next_manual, E_time_manual, E_time_next_manual = self.expectation_order(order, current_stage_manual, pos, first_E_time=E_time)
-                # case 2) take the 2nd order from the SS; consider it as extra sub-order; no need to finish other
+                # progress of these two sub options is tracked separately
+                # case 1) we make the whole process again; consider it as extra sub-order
+                E_reward_manual, E_reward_next_manual, E_time_manual, E_time_next_manual = self.expectation_order(order, current_stage_manual, current_pos)
+                # case 2) take the order from the SS; consider it as extra sub-order
                 E_reward_SS, E_reward_next_SS, E_time_SS, E_time_next_SS = self.expectation_order(order, current_stage_SS, current_pos, processing=["SS", "DS"])
                 
                 # assemble the extra vector before updating E's; delivery window feature already present in initial order
-                E_multi_order = [E_reward + E_reward_manual,
-                                 E_reward_next,
-                                 E_time + E_time_manual,
-                                 E_time_next,
+                E_multi_order = [E_reward_manual,
+                                 E_reward_next_manual,
+                                 E_time_manual,
+                                 E_time_next_manual,
                                  # same for SS path
                                  E_reward_SS,
                                  E_reward_next_SS,
                                  E_time_SS,
                                  E_time_next_SS]
-
-                # when the first product is finished we have next the intermediate of the second
-                if self.orders_delivered[idx] >= 1:
-                    E_multi_order[1] = E_reward_next_manual
-                    E_multi_order[3] = E_time_next_manual
             
             
             ##### for each order we add to vector; competitive deductions cant go below 0 points but SS do..
@@ -933,6 +922,7 @@ class env_rcll():
         del_windows = np.array([o[-2:] for o in self.orders])
         observation = np.concatenate((observation_, del_windows), axis=1)
         # rest parameters; handling double order and time
+        # TODO: do I need to use remaining (e.g. 1020 - time) time for windows too?
         remainder = E_multi_order +  [1020 - self.time]
         
         
@@ -1243,7 +1233,7 @@ if __name__ == "__main__":
     plt.xlabel('time')
     plt.ylabel('reward')
     plt.legend(loc='best')
-    plt.savefig("/home/akimiya/_Master/rcll-rl_scheduler/tests/img/rewards_over_time_final21.png", bbox_inches='tight')
+    plt.savefig("/home/akimiya/_Master/rcll-rl_scheduler/tests/img/rewards_over_time_final22.png", bbox_inches='tight')
     
     
     
