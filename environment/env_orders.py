@@ -1119,13 +1119,13 @@ if __name__ == "__main__":
                    [3, 0, 0, 0, 2, 1, 0, 639, 747], # @ 0403
                    [2, 0, 0, 0, 2, 0, 1, 840, 1020], # @ 0661
                    [3, 2, 0, 0, 2, 0, 0, 709, 816]] # @ 0209
-    self.products = [[3, 2],
-                     [1, 2, 1, 0, 2],
-                     [1, 2, 1],
-                     [2, 0, 0, 0, 2],
-                     [1, 1, 3],
-                     [2],
-                     [1, 1]]
+#    self.products = [[3, 2],
+#                     [1, 2, 1, 0, 2],
+#                     [1, 2, 1],
+#                     [2, 0, 0, 0, 2],
+#                     [1, 1, 3],
+#                     [2],
+#                     [1, 1]]
 #    self.robots[0] = self.machines["BS"]
     self.orders_ = [[1, 0, 0, 0, 2, 0, 0, 0, 1020], # @ 0006
                    [2, 3, 0, 0, 2, 0, 0, 0, 1020], # @ 0006
@@ -1213,14 +1213,14 @@ if __name__ == "__main__":
     labels = [r'$O{}$'.format(x) for x in range(1,9)] + ["$O{6a}$"] + ["$O{6b}$"]
     o = 0
     
-#    plt.figure(figsize=(30,14))
-#    for y, l in zip(t_rewards[o:], labels[o:]):
-#        plt.plot(t, y, label=l, linewidth=3, alpha=0.7)
-#    plt.grid(True)
-#    plt.xlabel('time')
-#    plt.ylabel('reward')
-#    plt.legend(loc='best')
-#    plt.savefig("/home/akimiya/_Master/rcll-rl_scheduler/tests/img/rewards_over_time_final18.png", bbox_inches='tight')
+    plt.figure(figsize=(30,14))
+    for y, l in zip(t_rewards[o:], labels[o:]):
+        plt.plot(t, y, label=l, linewidth=3, alpha=0.7)
+    plt.grid(True)
+    plt.xlabel('time')
+    plt.ylabel('reward')
+    plt.legend(loc='best')
+    plt.savefig("/home/akimiya/_Master/rcll-rl_scheduler/tests/img/all_rewards_over_time1.png", bbox_inches='tight')
 
 
     plt.figure(figsize=(30,14))
