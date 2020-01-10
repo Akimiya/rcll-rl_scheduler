@@ -616,10 +616,14 @@ class env_rcll():
     def expectation_order(self, order, current_stage, current_pos, first_E_time=0, processing=None):
         too_late = False
         
-        E_time = 0
         E_reward = 0
-        E_time_next = None
         E_reward_next = None
+        E_time = 0
+        E_time_next = None
+        
+        # early termination if called on a finished order
+        if current_stage == "FIN":
+            return E_reward, E_reward, E_time, E_time
         
         ##### track machine path, looping over future machines
         if processing == None:
@@ -779,23 +783,28 @@ class env_rcll():
         return E_reward, E_reward_next, E_time, E_time_next
     
     
-    def get_order_stage(self, idx):
+    def get_order_stage(self, idx, custom_products=None):
+        assert self.orders_delivered[idx] >= 0 and 2 <= self.orders_delivered[idx]
         # TODO: handle double order..
-        # note if we need multiple same we need account for those inside self.products
+        # note that if we need multiple same we need account for those inside self.products
         double_order = True if self.orders[idx][5] == 1 else False
+        double_order_out = [None, "BS", "SS"] # default
         
-        if self.orders_delivered[idx] == 0:
-            pass # default, mainly to lead all other cases to assertion
-        elif double_order and self.orders_delivered[idx] == 2:
+        if double_order and self.orders_delivered[idx] == 2:
             # just need maximum of two delivered!
             return ["FIN", "FIN", "FIN"]
         elif double_order and self.orders_delivered[idx] == 1:
             # just one is finised and we need check second
-            return ["FIN", "FIN", "FIN"]
+            if self.orders_delivered_SS == -1:
+                # means we dedicated to SS and already delivered normal
+                return ["FIN", "FIN", "DS"]
+            elif self.orders_delivered_SS == 1:
+                # means we delivered the SS order but not rest; so only normal allowed
+                double_order_out[1] = "FIN"
+                double_order_out[2] = "FIN"
         elif self.orders_delivered[idx] == 1:
             return "FIN" # this order is already complete and delivered
-        else:
-            assert False and "wrong number of delivered orders!"
+        
         
         stage_best = -1
         # loop through ongoing products
@@ -822,11 +831,22 @@ class env_rcll():
             stage_best += 1
             stage_next = self.processing_order[stage_best + 1]
         
-        # TODO: implement actual functionality
-        if double_order:
-            stage_next = [stage_next, "BS", "SS"]
         
-        return stage_next
+        if double_order:
+            if self.orders_delivered_SS == 1 and self.orders_delivered[idx] == 1:
+                # fill blank in case we already delivered a SS version
+                double_order_out[0] = stage_next 
+            elif self.orders_delivered_SS == 0:
+                # here need to check if we have a second matching product for parallel 
+                # we only know that we started the 2nd normal after we delivered the first!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                double_order_out[0] = stage_next
+                double_order_out[1] = "TODO"
+            else:
+                assert False and "Something not right?"
+            
+            return double_order_out
+        else:
+            return stage_next
 
     def get_observation(self):
         
@@ -979,6 +999,10 @@ class env_rcll():
         
         # track how many products have been delivered for an order
         self.orders_delivered = [0] * self.TOTAL_NUM_ORDERS
+        # extra parameter tracking use of the SS order; -1 when requested; 1 when delivered
+        self.orders_delivered_SS = 0
+        # while normally we only continue from an existing product, double orders can request same base again once
+        self.double_order_extra = -1
         
         # track what products we currently have
         self.products = []
@@ -1036,7 +1060,8 @@ class env_rcll():
         order = self.orders[idx]
         stage = self.get_order_stage(idx)
         # TODO: for the double orders
-
+        # TODO: manage the joker of creating an additional base in case we select both O_6 and O_6b 
+        self.double_order_extra = -1
         
         # correct processing_order to actual next machine
         to_machine, ring_pos, ring_col, ring_num = self.stage_to_machine(stage, order)
@@ -1083,7 +1108,9 @@ class env_rcll():
             assert self.orders_delivered[idx] <= 2 # we may never deliver more then 2
             
         elif stage == "SS":
-            pass
+            
+            # we've gone and ordered it
+            self.orders_delivered_SS = -1
         
         
         ### update the robots position, implying it drove there
@@ -1123,7 +1150,13 @@ if __name__ == "__main__":
                    [3, 0, 0, 0, 2, 1, 0, 639, 747], # @ 0403
                    [2, 0, 0, 0, 2, 0, 1, 840, 1020], # @ 0661
                    [3, 2, 0, 0, 2, 0, 0, 709, 816]] # @ 0209
-    self.products = []
+    self.products = [[3, 2],
+                     [1, 2, 1, 0, 2],
+                     [1, 2, 1],
+                     [2, 0, 0, 0, 2],
+                     [1, 1, 3],
+                     [2],
+                     [1, 1]]
 #    self.robots[0] = self.machines["BS"]
     self.orders_ = [[1, 0, 0, 0, 2, 0, 0, 0, 1020], # @ 0006
                    [2, 3, 0, 0, 2, 0, 0, 0, 1020], # @ 0006
@@ -1167,15 +1200,23 @@ if __name__ == "__main__":
 #    plt.grid(True)
 #    plt.hist(data, bins=25, density=True, alpha=0.6, color='g')
     
-#self.products = [[],
-# [-1],
-# [3, 2],
-# [1, 2, 1, 0, 2],
-# [1, 2, 1],
-# [2, 0, 0, 0, 2],
-# [1, 1, 3],
-# [2],
-# [1, 1]]
+    order = [3, 0, 0, 0, 2, 1, 0, 639, 747]
+    possible_comb = [
+                    ([[], [], []], 0, 0),
+                    ([[3], [], []], 0, 0),
+                    ([[3, 0, 0, 0, 2], [], []], 0, 0),
+                    ([[], [], []], 1, 0),
+                    ([[], [], [3, 0, 0, 0, 2]], 0, -1),
+                    ([[3], [], [3, 0, 0, 0, 2]], 0, -1),
+                    ([[3, 0, 0, 0, 2], [], [3, 0, 0, 0, 2]], 0, -1),
+                    ([[], [], [3, 0, 0, 0, 2]], 1, -1),
+                    ([[], [], []], 2, 1),
+                    ([[3], [3], []], 0, 0),
+                    ([[3, 0, 0, 0, 2], [3], []], 0, 0),
+                    ([[3, 0, 0, 0, 2], [3], []], 0, 0),
+                    ]
+    for prod, deliv, deliv_SS in possible_comb:
+        self.get_order_stage(5)
 #BS
 #R1
 #BS
@@ -1203,14 +1244,14 @@ if __name__ == "__main__":
     labels = [r'$O{}$'.format(x) for x in range(1,9)] + ["$O{6a}$"] + ["$O{6b}$"]
     o = 0
     
-    plt.figure(figsize=(30,14))
-    for y, l in zip(t_rewards[o:], labels[o:]):
-        plt.plot(t, y, label=l, linewidth=3, alpha=0.7)
-    plt.grid(True)
-    plt.xlabel('time')
-    plt.ylabel('reward')
-    plt.legend(loc='best')
-    plt.savefig("/home/akimiya/_Master/rcll-rl_scheduler/tests/img/rewards_over_time_final18.png", bbox_inches='tight')
+#    plt.figure(figsize=(30,14))
+#    for y, l in zip(t_rewards[o:], labels[o:]):
+#        plt.plot(t, y, label=l, linewidth=3, alpha=0.7)
+#    plt.grid(True)
+#    plt.xlabel('time')
+#    plt.ylabel('reward')
+#    plt.legend(loc='best')
+#    plt.savefig("/home/akimiya/_Master/rcll-rl_scheduler/tests/img/rewards_over_time_final18.png", bbox_inches='tight')
 
 
     plt.figure(figsize=(30,14))
