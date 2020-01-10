@@ -783,19 +783,13 @@ class env_rcll():
         return E_reward, E_reward_next, E_time, E_time_next
     
     
-    def get_order_stage(self, idx, custom_products=None):
-        double_order = True if self.orders[idx][5] == 1 else False            
-        
+    def get_order_stage(self, idx):
         assert (0 <= self.orders_delivered[idx] and self.orders_delivered[idx] <= 1) or (
-                0 <= self.orders_delivered[idx] and self.orders_delivered[idx] <= 2 and double_order)
+                0 <= self.orders_delivered[idx] and self.orders_delivered[idx] <= 2 and True if self.orders[idx][5] == 1 else False)
         
-        if double_order and self.orders_delivered[idx] == 2:
-            # need maximum of two delivered
-            return ["FIN", "FIN", "FIN"]
-        elif self.orders_delivered[idx] == 1:
+        if self.orders_delivered[idx] >= 1:
             # this order is already complete and delivered
             return "FIN"
-        
         
         stage_best = -1
         # loop through ongoing products
@@ -822,11 +816,7 @@ class env_rcll():
             stage_best += 1
             stage_next = self.processing_order[stage_best + 1]
         
-        
-        if double_order:
-            return [stage_next, self.double_order_stage_manual, self.double_order_stage_SS]
-        else:
-            return stage_next
+        return stage_next
 
     def get_observation(self):
         
@@ -849,11 +839,6 @@ class env_rcll():
             # account for partial processed products => in step() (update self.order_stage for all)
             # we start in the order processing pipeline from the step it currently is in
             current_stage = self.get_order_stage(idx)
-            # we can have list in case of 2 requested products; work with first initially
-            if type(current_stage) == list:
-                current_stage_manual = current_stage[1]
-                current_stage_SS = current_stage[2]
-                current_stage = current_stage[0] # overwriting
             
             # TODO: consider multiple robots (need outside self-loop with robot selection). search closest free robot?
             # robots are reasonably fast that pathing, thus which robot, is a more minor problem
@@ -893,9 +878,9 @@ class env_rcll():
             if order[5] == 1:
                 # progress of these two sub options is tracked separately
                 # case 1) we make the whole process again; consider it as extra sub-order
-                E_reward_manual, E_reward_next_manual, E_time_manual, E_time_next_manual = self.expectation_order(order, current_stage_manual, current_pos)
+                E_reward_manual, E_reward_next_manual, E_time_manual, E_time_next_manual = self.expectation_order(order, self.double_order_stage_manual, current_pos)
                 # case 2) take the order from the SS; consider it as extra sub-order
-                E_reward_SS, E_reward_next_SS, E_time_SS, E_time_next_SS = self.expectation_order(order, current_stage_SS, current_pos, processing=["SS", "DS"])
+                E_reward_SS, E_reward_next_SS, E_time_SS, E_time_next_SS = self.expectation_order(order, self.double_order_stage_SS, current_pos, processing=["SS", "DS"])
                 
                 # assemble the extra vector before updating E's; delivery window feature already present in initial order
                 E_multi_order = [E_reward_manual,
@@ -1024,71 +1009,86 @@ class env_rcll():
         
         ### we assume selecting from one of the orders and computing/returning real-world-like intermediate step
         assert action >= 0 and action <= self.ACTION_SPACE_SIZE - 1
-        # TODO: convert action to order index we want to advance
+
         idx = action
+        if action == 8 or action == 9:
+            idx = [i for i, x in enumerate(self.orders) if x[5] == 1][0] # get the double order index; assuming just one exist
+#        double_order = True if self.orders[idx][5] == 1 else False            
         
         order = self.orders[idx]
-        stage = self.get_order_stage(idx)
+        current_stage = self.get_order_stage(idx)
+        
         # TODO: for the double orders; we need be able to detect if we use a possible O_6 base for another one
         # TODO: manage the joker of creating an additional base in case we select both O_6 and O_6b 
         
         # correct processing_order to actual next machine
-        to_machine, ring_pos, ring_col, ring_num = self.stage_to_machine(stage, order)
+        to_machine, ring_pos, ring_col, ring_num = self.stage_to_machine(current_stage, order)
         
         # positional targets
-        current_pos = self.robots[0]
+        current_pos = self.robots[0] # TODO: robot selection
         next_pos = self.machines[to_machine]
         
         # now act probabilistic! later substitute with real data!
         # unavoidable time spend on moving to machine; adding (thus multiplying) up random varibles per meter
         distance = current_pos.distance(next_pos)
         time_driving = self.get_normal(distance * self.move_mean, distance * self.move_var)
-        # unavoidable time consumption; here we only grap and thus half
-        time_mechanical = self.get_normal(self.grap_and_place_mean / 2, self.grap_and_place_var / 2)
+        time_mechanical = 0
+        time_wait = 0
         
-        # assume 1.5m travel distance around machine
+        # TODO: need assume 1.5m travel distance around machine?
         
-        
-        if stage == "BS":
+        if current_stage == "BS":
             # avoidable time spent on machine internal processing; BS is gaussian physical time
-            time_wait = self.get_normal(self.machine_times["BS"][0], self.machine_times["BS"][1])
+            # TODO: account the unavoidable time inside the avoidable by sending message earlier?
+            time_wait += self.get_normal(self.machine_times["BS"][0], self.machine_times["BS"][1])
+            
+            # unavoidable time consumption; here we only grap and thus half
+            time_mechanical += self.get_normal(self.grap_and_place_mean / 2, self.grap_and_place_var / 2)
             
             # no reward for getting a base
             reward = 0
             
+            if len(self.products) + 1 > len(self.robots):
+                return None, None, None # invalid action as we can't have more active products then robots (for now)
+            
             # tracking what partial products we own, adding the base
             self.products.append([order[0]])
             
-        elif stage == "R1":
+        elif current_stage == "R1":
             pass
             
-        elif stage == "R2":
+        elif current_stage == "R2":
             pass    
         
-        elif stage == "R3":
+        elif current_stage == "R3":
             pass
                     
-        elif stage == "CS":
+        elif current_stage == "CS":
+            # TODO: do we have now twice the machine_time or once?? currently assume twice
+            
+            
+            # placing product 
+            time_mechanical += self.get_normal(self.grap_and_place_mean, self.grap_and_place_var)
             pass
             
-        elif stage == "DS":
+        elif current_stage == "DS":
             pass
-            
-
-            
-        elif stage == "SS":
-            
-            # we've gone and ordered it
-            self.orders_delivered_SS = -1
+                        
+        elif current_stage == "SS":
+            # we've gone and ordered it            
+            reward = self.PRODUCTION_POINTS_SS_RETRIEVAL
         
+            # transition to the next stage; as we selected SS other can't be chosen anymore
+            self.double_order_stage_SS = "DS"
+            self.double_order_stage_manual = "FIN"
         
         ### update the robots position, implying it drove there
         self.robots[0] = next_pos
         
         ### apply the real time passed
+        # TODO: before advancing time we need to check potential events happening before it! consider mkultiple of those!
         self.time += time_driving + time_mechanical + time_wait
         
-        ###
         
         # we are finished with the episode at the end of the game
         if self.time >= 1020:
@@ -1169,23 +1169,23 @@ if __name__ == "__main__":
 #    plt.grid(True)
 #    plt.hist(data, bins=25, density=True, alpha=0.6, color='g')
     
-    order = [3, 0, 0, 0, 2, 1, 0, 639, 747]
-    possible_comb = [
-                    ([[], [], []], 0, 0),
-                    ([[3], [], []], 0, 0),
-                    ([[3, 0, 0, 0, 2], [], []], 0, 0),
-                    ([[], [], []], 1, 0),
-                    ([[], [], [3, 0, 0, 0, 2]], 0, -1),
-                    ([[3], [], [3, 0, 0, 0, 2]], 0, -1),
-                    ([[3, 0, 0, 0, 2], [], [3, 0, 0, 0, 2]], 0, -1),
-                    ([[], [], [3, 0, 0, 0, 2]], 1, -1),
-                    ([[], [], []], 2, 1),
-                    ([[3], [3], []], 0, 0),
-                    ([[3, 0, 0, 0, 2], [3], []], 0, 0),
-                    ([[3, 0, 0, 0, 2], [3], []], 0, 0),
-                    ]
-    for prod, deliv, deliv_SS in possible_comb:
-        self.get_order_stage(5)
+#    order = [3, 0, 0, 0, 2, 1, 0, 639, 747]
+#    possible_comb = [
+#                    ([[], [], []], 0, 0),
+#                    ([[3], [], []], 0, 0),
+#                    ([[3, 0, 0, 0, 2], [], []], 0, 0),
+#                    ([[], [], []], 1, 0),
+#                    ([[], [], [3, 0, 0, 0, 2]], 0, -1),
+#                    ([[3], [], [3, 0, 0, 0, 2]], 0, -1),
+#                    ([[3, 0, 0, 0, 2], [], [3, 0, 0, 0, 2]], 0, -1),
+#                    ([[], [], [3, 0, 0, 0, 2]], 1, -1),
+#                    ([[], [], []], 2, 1),
+#                    ([[3], [3], []], 0, 0),
+#                    ([[3, 0, 0, 0, 2], [3], []], 0, 0),
+#                    ([[3, 0, 0, 0, 2], [3], []], 0, 0),
+#                    ]
+#    for prod, deliv, deliv_SS in possible_comb:
+#        self.get_order_stage(5)
 #BS
 #R1
 #BS
