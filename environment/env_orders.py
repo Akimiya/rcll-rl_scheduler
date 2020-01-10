@@ -786,8 +786,8 @@ class env_rcll():
     def get_order_stage(self, idx, custom_products=None):
         double_order = True if self.orders[idx][5] == 1 else False            
         
-        assert (self.orders_delivered[idx] >= 0 and 1 <= self.orders_delivered[idx]) or (
-                self.orders_delivered[idx] >= 0 and 2 <= self.orders_delivered[idx] and double_order)
+        assert (0 <= self.orders_delivered[idx] and self.orders_delivered[idx] <= 1) or (
+                0 <= self.orders_delivered[idx] and self.orders_delivered[idx] <= 2 and double_order)
         
         if double_order and self.orders_delivered[idx] == 2:
             # need maximum of two delivered
