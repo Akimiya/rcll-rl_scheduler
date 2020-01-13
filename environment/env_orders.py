@@ -338,77 +338,218 @@ class RefBox_recreated():
         
         return machines, down_period, rings, ring_additional_bases, order_declarations, orders_full
 
-class env_rcll():
+
+class rcll_strategy():
+    """
+    Definition of roboter behavoir, dictating time spent on tasks
+    Used to compute expectation values and actual simulation for the main environment
+    Can be later optimized seperately!
+    """
+    def __init__(self):
+        self.current_pos = None
+    
+    def update_game_param(self, machines, ring_additional_bases, ring_buf_bases):
+        self.machines = machines
+        self.ring_additional_bases = ring_additional_bases
+        self.ring_buf_bases = ring_buf_bases
+    
+    def get_progress(self, robots, to_machine, order, ring_info, new_loop, E_delivery=None, E=True):
+        # specify for convenience
+        ring_pos, ring_col, ring_num = ring_info
+        
+        distance = 0 # the traveled/movement distance 
+        wait = 0 # machine processing time + arm-movement
+        reward = 0 # reward for that step
+
+        # tracking current position locally, while beeing in the expectation loop outside
+        if new_loop:
+            self.current_pos = robots[0]
+        
+        ##### get specific machine position and compute travling distance
+        # TODO: consider distance=0 when moving from RS1 to RS1 for different color ring
+        next_pos = self.machines[to_machine]
+        distance += self.current_pos.distance(next_pos)
+        self.current_pos = next_pos # we now made the step to next machine
+        
+        # assume each step involves grapping and placing a product at least once
+        wait += rcll_env.grap_and_place_mean
+        
+        ###### additional wait time per machine; assumed after we arrive and do process there
+        ###### computation of reward for this step
+        if to_machine == "BS":
+            # TODO: can safe wait time in ordering from BS by sending request before arrive there
+            wait += rcll_env.machine_times["BS"][0]
+            
+            # no reward for getting a base
+            reward += 0
+            
+        elif to_machine == "RS1" or to_machine == "RS2":
+            wait += rcll_env.machine_times["RS"][0] # mean official delay
+            
+            ### consider additional bases and reward
+            # figure out if current ring color need additional bases
+            if ring_col == self.ring_additional_bases[0]: # 2 bases
+                need_bases = 2
+                
+                # reward for CC2
+                reward += rcll_env.PRODUCTION_POINTS_FINISH_CC2_STEP
+                                        
+            elif ring_col == self.ring_additional_bases[1]: # 1 bases
+                need_bases = 1
+                
+                # reward for CC1
+                reward += rcll_env.PRODUCTION_POINTS_FINISH_CC1_STEP
+            else:
+                need_bases = 0
+                
+                # reward for CC0
+                reward += rcll_env.PRODUCTION_POINTS_FINISH_CC0_STEP
+            
+            # check if need gather additional bases; need minus already buffered bases
+            missing_bases = need_bases - self.ring_buf_bases[int(to_machine[2]) - 1]
+            if missing_bases >= 1:
+                # we condsider an additional back and forth to a BS from current RS *per* missing base
+                # TODO: consider preemptive buffering of cap and getting one base there
+                extra = self.current_pos.distance(self.machines["BS"]) * 2 # 2 for back-forth
+                
+                distance += extra * missing_bases
+                wait += rcll_env.grap_and_place_mean * missing_bases # assumption on lost time grapping bases
+                
+                # additional points for base feeded into RS
+                reward += rcll_env.PRODUCTION_POINTS_ADDITIONAL_BASE * missing_bases
+            
+            # for final ring, depending on number of rings
+            if ring_num == ring_pos:
+                if ring_num == 1:
+                    # reward for C1
+                    reward += rcll_env.PRODUCTION_POINTS_FINISH_C1_PRECAP
+                elif ring_num == 2:
+                    # reward for C2
+                    reward += rcll_env.PRODUCTION_POINTS_FINISH_C2_PRECAP
+                elif ring_num == 3:
+                    # reward for C3
+                    reward += rcll_env.PRODUCTION_POINTS_FINISH_C3_PRECAP
+                    
+        elif to_machine == "CS1" or to_machine == "CS2":
+            # buffer cap
+            wait += rcll_env.machine_times["CS"][0]
+#                wait += 3 * 2 # traveling around the machine can be done during buffering
+            # reward for buffering a cap
+            reward += rcll_env.PRODUCTION_POINTS_RETRIEVE_CAP
+            
+            # dispose base to nearest RS for now
+            # TODO: optimize use, depending on active orders; also account these bases in previous RS step?
+            distance_rs1 = self.current_pos.distance(self.machines["RS1"])
+            distance_rs2 = self.current_pos.distance(self.machines["RS2"])
+            wait += min(distance_rs1, distance_rs2) * 2 # 2 for back-forth
+            wait += rcll_env.grap_and_place_mean # assumption on lost time grapping clear bases
+            
+            
+            # mount cap
+            wait += rcll_env.machine_times["CS"][0]
+            # reward fo mount cap
+            reward += rcll_env.PRODUCTION_POINTS_MOUNT_CAP
+            
+        elif to_machine == "DS":
+            wait += rcll_env.machine_times["DS"][0]
+            
+            # comsidering delivery window; accounting for next E_time update
+            E_delivery = E_delivery + distance * rcll_env.move_mean + wait
+            if E_delivery < order[-2]:
+                reward += rcll_env.PRODUCTION_POINTS_DELIVERY_WRONG # wrong delivery
+            elif E_delivery < order[-1]:
+                reward += rcll_env.PRODUCTION_POINTS_DELIVERY # (correct) delivery
+            elif E_delivery < order[-1] + rcll_env.PRODUCTION_DELIVER_MAX_LATENESS_TIME:
+                tmp = 15 - (E_delivery - order[-1]) * 1.5 + 5
+                assert tmp >= 5 and tmp <= 20
+                reward += tmp # delayed delivery
+            else:
+                reward += rcll_env.PRODUCTION_POINTS_DELIVERY_TOO_LATE # late delivery
+            
+        elif to_machine == "SS":
+            # TODO: can safe time in ordering from SS by sending request before arrive there
+            wait += rcll_env.machine_times["SS"][0]
+            
+            reward += rcll_env.PRODUCTION_POINTS_SS_RETRIEVAL # listed cost
+
+
+        return distance * rcll_env.move_mean, wait, reward
+
+
+class rcll_env():
     """
     Main environment class handlin simulation
     For perfect recreation of live behavoir pass a "RefBox_recreated" object,
     alternatively some more general randomization is used (much bigger state space!).
     """
     
-    def __init__(self, RefBox_recreated=None, normalize=False):
+    ############################ PROBABILITIES ############################
+    # distribution for movement
+    move_mean = 2
+    move_var = 0.4
+    
+    # additional time factor for time lost on grapping products with machine arm
+    # 2017 Carologistics needs 68sec for adjusting grapping and plaing on CS
+    # they need 45sec for grap, move and place products (10~30sec move and adjust)
+    # Rayleigh (or Chi) distribution may also be an option
+    grap_and_place_mean = 30
+    grap_and_place_var = 7
+    
+    # each machine has its own processing time; some are improvised gaussian format: [mean, var]
+    machine_times = {
+            "BS": [5, 0.15], # estimate/assumption
+            "RS": [40, 60], # official low and high
+            "CS": [15, 25], # official low and high
+            "DS": [20, 40], # official low and high
+            "SS": [5, 0.15] # estimate/assumption
+            }
+    
+    
+    ############################### REWARDS ###############################
+    # taken from globals.clp but need consisntency with rulebook anyway
+    PRODUCTION_POINTS_ADDITIONAL_BASE =  2
+    PRODUCTION_POINTS_FINISH_CC0_STEP =  5
+    PRODUCTION_POINTS_FINISH_CC1_STEP = 10
+    PRODUCTION_POINTS_FINISH_CC2_STEP = 20
+    PRODUCTION_POINTS_FINISH_C1_PRECAP = 10
+    PRODUCTION_POINTS_FINISH_C2_PRECAP = 30
+    PRODUCTION_POINTS_FINISH_C3_PRECAP = 80
+    PRODUCTION_POINTS_MOUNT_CAP = 10
+    PRODUCTION_POINTS_RETRIEVE_CAP = 2
+    PRODUCTION_POINTS_DELIVERY  = 20
+    PRODUCTION_POINTS_DELIVERY_TOO_LATE = 5
+    PRODUCTION_POINTS_DELIVERY_WRONG = 1
+    PRODUCTION_DELIVER_MAX_LATENESS_TIME = 10
+    PRODUCTION_POINTS_COMPETITIVE_FIRST_BONUS = 10
+    PRODUCTION_POINTS_COMPETITIVE_SECOND_DEDUCTION = 10 # not used: assuming symetric to BONUS
+    PRODUCTION_POINTS_SS_RETRIEVAL = -10
+#    self.SENSELESS_ACTION = -20
+#    self.CORRECT_STEP = 10
+#    self.DISCART_ORDER = -2
+#    self.INCORRECT_STEP = -10
+#    self.FINISHED_ORDER = 20
+    
+    
+    def __init__(self, rcll_strategy, RefBox_recreated=None, normalize=False):
         self.random = SystemRandom() # local random number generator
         self.TOTAL_NUM_ORDERS = 8 # warning: currently does not scale everything
-        self.ACTION_SPACE_SIZE = self.TOTAL_NUM_ORDERS + 2 # plus one additional double-slot for double amount (6th) order
-        
-        # there are 3 rings, so 4 repeats
-        self.ORDER_NORM_FACTOR = [] # old: [3, 4, 4, 4, 2, 1, 1, 1020, 1020]
+        self.ACTION_SPACE_SIZE = self.TOTAL_NUM_ORDERS + 2 # plus an additional double-slot for double amount (6th) order
         
         # TODO: return normalized parameters
         self.normalize = normalize
+        # there are 3 rings, so 4 repeats
+        self.ORDER_NORM_FACTOR = [] # old: [3, 4, 4, 4, 2, 1, 1, 1020, 1020]
         
         # order of steps needed to fulfill an oder; R is ring 1 to 3, FIN is completed
         self.processing_order = ["BS", "R1", "R2", "R3", "CS", "DS"]
-        
         
         # if passed use game code as similar to the real thing as possible
         # make sure class is up-to-date with actual RefBox!
         self.RefBox = RefBox_recreated
         
+        # seperate module dictating decisions made in expectation and step computation
+        self.strategy = rcll_strategy
         
-        # rewards
-        # taken from globals.clp but need consisntency with rulebook anyway
-        self.PRODUCTION_POINTS_ADDITIONAL_BASE =  2
-        self.PRODUCTION_POINTS_FINISH_CC0_STEP =  5
-        self.PRODUCTION_POINTS_FINISH_CC1_STEP = 10
-        self.PRODUCTION_POINTS_FINISH_CC2_STEP = 20
-        self.PRODUCTION_POINTS_FINISH_C1_PRECAP = 10
-        self.PRODUCTION_POINTS_FINISH_C2_PRECAP = 30
-        self.PRODUCTION_POINTS_FINISH_C3_PRECAP = 80
-        self.PRODUCTION_POINTS_MOUNT_CAP = 10
-        self.PRODUCTION_POINTS_RETRIEVE_CAP = 2
-        self.PRODUCTION_POINTS_DELIVERY  = 20
-        self.PRODUCTION_POINTS_DELIVERY_TOO_LATE = 5
-        self.PRODUCTION_POINTS_DELIVERY_WRONG = 1
-        self.PRODUCTION_DELIVER_MAX_LATENESS_TIME = 10
-        self.PRODUCTION_POINTS_COMPETITIVE_FIRST_BONUS = 10
-        self.PRODUCTION_POINTS_COMPETITIVE_SECOND_DEDUCTION = 10 # not used: assuming symetric to BONUS
-        self.PRODUCTION_POINTS_SS_RETRIEVAL = -10
-#        self.SENSELESS_ACTION = -20
-#        self.CORRECT_STEP = 10
-#        self.DISCART_ORDER = -2
-#        self.INCORRECT_STEP = -10
-#        self.FINISHED_ORDER = 20
-        
-        ############################ PROBABILITIES ############################
-        # distribution for movement
-        self.move_mean = 2
-        self.move_var = 0.4
-        
-        # additional time factor for time lost on grapping products with machine arm
-        # 2017 Carologistics needs 68sec for adjusting grapping and plaing on CS
-        # they need 45sec for grap, move and place products (10~30sec move and adjust)
-        # Rayleigh (or Chi) distribution may also be an option
-        self.grap_and_place_mean = 30
-        self.grap_and_place_var = 7
-        
-        # each machine has its own processing time; some are improvised gaussian format: [mean, var]
-        self.machine_times = {
-                "BS": [5, 0.15], # estimate/assumption
-                "RS": [40, 60], # official low and high
-                "CS": [15, 25], # official low and high
-                "DS": [20, 40], # official low and high
-                "SS": [5, 0.15] # estimate/assumption
-                }
         
     def generate_game_setting(self):
         """
@@ -584,7 +725,7 @@ class env_rcll():
             ring_num = 3 - order[1:4].count(0)
             # early exit if ring does not exist
             if ring_col == 0:
-                return to_machine, ring_pos, ring_col, ring_num
+                return to_machine, [ring_pos, ring_col, ring_num]
             
             # figure out where we can get it
             if ring_col in self.rings[0]:
@@ -611,9 +752,9 @@ class env_rcll():
         else:
             to_machine = stage
         
-        return to_machine, ring_pos, ring_col, ring_num
+        return to_machine, [ring_pos, ring_col, ring_num]
     
-    def expectation_order(self, order, current_stage, current_pos, first_E_time=0, processing=None):
+    def expectation_order(self, order, current_stage, first_E_time=0, processing=None):
         too_late = False
         
         E_reward = 0
@@ -630,132 +771,19 @@ class env_rcll():
             processing = self.processing_order
         cont = processing.index(current_stage)
         
-        for stage in processing[cont:]:
-            
-            distance = 0 # the traveled/movement distance 
-            wait = 0 # machine processing time + arm-movement
-            reward = 0 # reward for that step
-            # for safety of reusing
-            need_bases = None
-            missing_bases = None
-            next_pos = None
-            E_delivery = None
-            
-            # correct processing_order to actual next machine
-            to_machine, ring_pos, ring_col, ring_num = self.stage_to_machine(stage, order)
+        
+        new_loop = True # making strategy class aware of expectation loops
+        for stage in processing[cont:]:            
+            # correct processing_order to actual next machine; ring_info= [position, color, number]
+            to_machine, ring_info = self.stage_to_machine(stage, order)
             # check if it has ring on this slot; otherwise it is an non-existent processing step
-            if ring_col == 0:
+            if ring_info[1] == 0:
                 continue
             
-            ##### get specific machine position and compute travling distance
-            # TODO: consider distance=0 when moving from RS1 to RS1 for different color ring
-            next_pos = self.machines[to_machine]
-            distance += current_pos.distance(next_pos)
-            current_pos = next_pos # we now made the step to next machine
-            
-            # assume each step involves grapping and placing a product at least once
-            wait += self.grap_and_place_mean
-            
-            ###### additional wait time per machine; assumed after we arrive and do process there
-            ###### computation of reward for this step
-            if to_machine == "BS":
-                # TODO: can safe wait time in ordering from BS by sending request before arrive there
-                wait += self.machine_times["BS"][0]
-                
-                # no reward for getting a base
-                reward += 0
-                
-            elif to_machine == "RS1" or to_machine == "RS2":
-                wait += self.machine_times["RS"][0] # mean official delay
-                
-                ### consider additional bases and reward
-                # figure out if current ring need additional bases
-                if ring_col == self.ring_additional_bases[0]: # 2 bases
-                    need_bases = 2
-                    
-                    # reward for CC2
-                    reward += self.PRODUCTION_POINTS_FINISH_CC2_STEP
-                                            
-                elif ring_col == self.ring_additional_bases[1]: # 1 bases
-                    need_bases = 1
-                    
-                    # reward for CC1
-                    reward += self.PRODUCTION_POINTS_FINISH_CC1_STEP
-                else:
-                    need_bases = 0
-                    
-                    # reward for CC0
-                    reward += self.PRODUCTION_POINTS_FINISH_CC0_STEP
-                
-                # check if need gather additional bases; need minus already buffered bases
-                missing_bases = need_bases - self.rings_buf_bases[int(to_machine[2]) - 1]
-                if missing_bases >= 1:
-                    # we condsider an additional back and forth to a BS from current RS *per* missing base
-                    # TODO: consider preemptive buffering of cap and getting one base there
-                    extra = current_pos.distance(self.machines["BS"]) * 2 # 2 for back-forth
-                    
-                    distance += extra * missing_bases
-                    wait += self.grap_and_place_mean * missing_bases # assumption on lost time grapping bases
-                    
-                    # additional points for base feeded into RS
-                    reward += self.PRODUCTION_POINTS_ADDITIONAL_BASE * missing_bases
-                
-                # for final ring, depending on number of rings
-                if ring_num == ring_pos:
-                    if ring_num == 1:
-                        # reward for C1
-                        reward += self.PRODUCTION_POINTS_FINISH_C1_PRECAP
-                    elif ring_num == 2:
-                        # reward for C2
-                        reward += self.PRODUCTION_POINTS_FINISH_C2_PRECAP
-                    elif ring_num == 3:
-                        # reward for C3
-                        reward += self.PRODUCTION_POINTS_FINISH_C3_PRECAP
-                        
-            elif to_machine == "CS1" or to_machine == "CS2":
-                # buffer cap
-                wait += self.machine_times["CS"][0]
-#                wait += 3 * 2 # traveling around the machine can be done during buffering
-                # reward for buffering a cap
-                reward += self.PRODUCTION_POINTS_RETRIEVE_CAP
-                
-                # dispose base to nearest RS for now
-                # TODO: optimize use, depending on active orders; also account these bases in previous RS step?
-                distance_rs1 = current_pos.distance(self.machines["RS1"])
-                distance_rs2 = current_pos.distance(self.machines["RS2"])
-                wait += min(distance_rs1, distance_rs2) * 2 # 2 for back-forth
-                wait += self.grap_and_place_mean # assumption on lost time grapping clear bases
-                
-                
-                # mount cap
-                wait += self.machine_times["CS"][0]
-                # reward fo mount cap
-                reward += self.PRODUCTION_POINTS_MOUNT_CAP
-                
-            elif to_machine == "DS":
-                wait += self.machine_times["DS"][0]
-                
-                # comsidering delivery window; accounting for next E_time update
-                E_delivery = self.time + E_time + distance * self.move_mean + wait + first_E_time
-                if E_delivery < order[-2]:
-                    reward += self.PRODUCTION_POINTS_DELIVERY_WRONG # wrong delivery
-                elif E_delivery < order[-1]:
-                    reward += self.PRODUCTION_POINTS_DELIVERY # (correct) delivery
-                elif E_delivery < order[-1] + self.PRODUCTION_DELIVER_MAX_LATENESS_TIME:
-                    tmp = 15 - (E_delivery - order[-1]) * 1.5 + 5
-                    assert tmp >= 5 and tmp <= 20
-                    reward += tmp # delayed delivery
-                else:
-                    reward += self.PRODUCTION_POINTS_DELIVERY_TOO_LATE # late delivery
-                
-            elif to_machine == "SS":
-                # TODO: can safe time in ordering from SS by sending request before arrive there
-                wait += self.machine_times["SS"][0]
-                
-                reward += self.PRODUCTION_POINTS_SS_RETRIEVAL # listed cost
-            
-            # accumulate time; assume 1m per 2s
-            E_time += distance * self.move_mean + wait
+            E_delivery = self.time + E_time + first_E_time
+            time_driving, time_wait, reward = self.strategy.get_progress(self.robots, to_machine, order, ring_info, new_loop, E_delivery)
+            new_loop = False # so just once true at start of loop
+            E_time += time_driving + time_wait
             
 
             # based on Rulebook Ch. 5.8, we get only points for *non-DS* stages which are not later then the delivery window
@@ -840,12 +868,8 @@ class env_rcll():
             # we start in the order processing pipeline from the step it currently is in
             current_stage = self.get_order_stage(idx)
             
-            # TODO: consider multiple robots (need outside self-loop with robot selection). search closest free robot?
-            # robots are reasonably fast that pathing, thus which robot, is a more minor problem
-            current_pos = self.robots[0]
-            
             # TODO: Expectation of when already have fitting partial product => consider in step
-            E_reward, E_reward_next, E_time, E_time_next = self.expectation_order(order, current_stage, current_pos)
+            E_reward, E_reward_next, E_time, E_time_next = self.expectation_order(order, current_stage)
             
             # consider competitive orders, when we deliver on time; apply sigmoid-like scaling for delivery window
             E_delivery = self.time + E_time
@@ -878,9 +902,9 @@ class env_rcll():
             if order[5] == 1:
                 # progress of these two sub options is tracked separately
                 # case 1) we make the whole process again; consider it as extra sub-order
-                E_reward_manual, E_reward_next_manual, E_time_manual, E_time_next_manual = self.expectation_order(order, self.double_order_stage_manual, current_pos)
+                E_reward_manual, E_reward_next_manual, E_time_manual, E_time_next_manual = self.expectation_order(order, self.double_order_stage_manual)
                 # case 2) take the order from the SS; consider it as extra sub-order
-                E_reward_SS, E_reward_next_SS, E_time_SS, E_time_next_SS = self.expectation_order(order, self.double_order_stage_SS, current_pos, processing=["SS", "DS"])
+                E_reward_SS, E_reward_next_SS, E_time_SS, E_time_next_SS = self.expectation_order(order, self.double_order_stage_SS, processing=["SS", "DS"])
                 
                 # assemble the extra vector before updating E's; delivery window feature already present in initial order
                 E_multi_order = [E_reward_manual,
@@ -963,7 +987,7 @@ class env_rcll():
         self.products = []
         
         # track how many bases a ring station has buffered
-        self.rings_buf_bases = [0, 0]
+        self.ring_buf_bases = [0, 0]
                 
         # current time
         self.time = 0
@@ -986,8 +1010,12 @@ class env_rcll():
         self.order_declarations.sort(key=lambda x: x[0])
         # actually assign current orders
         self.update_orders()
-
-
+        
+        
+        # update game-constant parameters for the strategy as well
+        self.strategy.update_game_param(self.machines, self.ring_additional_bases, self.ring_buf_bases)
+        
+        
         return self.get_observation()
 
     def get_normal(self, mean, var):
@@ -1107,7 +1135,8 @@ if __name__ == "__main__":
     
     #### for debug scenario
     r = RefBox_recreated()
-    self = env_rcll(r)
+    s = rcll_strategy()
+    self = rcll_env(s, r)
     self.reset()
     
 #    assert False
@@ -1146,6 +1175,7 @@ if __name__ == "__main__":
                      'DS': field_pos(2.5, 4.5)}
     self.ring_additional_bases = [3, 1, 2, 4]
     self.rings = [[3, 4], [1, 2]]
+    self.strategy.update_game_param(self.machines, self.ring_additional_bases, self.ring_buf_bases)
     
     assert False
     
@@ -1220,7 +1250,7 @@ if __name__ == "__main__":
     plt.xlabel('time')
     plt.ylabel('reward')
     plt.legend(loc='best')
-    plt.savefig("/home/akimiya/_Master/rcll-rl_scheduler/tests/img/all_rewards_over_time1.png", bbox_inches='tight')
+    plt.savefig("/home/akimiya/_Master/rcll-rl_scheduler/tests/img/all_rewards_over_time2.png", bbox_inches='tight')
 
 
     plt.figure(figsize=(30,14))
