@@ -354,16 +354,15 @@ class rcll_strategy():
         self.ring_buf_bases = ring_buf_bases
     
     def get_progress(self, robots, to_machine, order, ring_info, new_loop, E_delivery=None, E=True):
-        # specify for convenience
+        # specify names for convenience
         ring_pos, ring_col, ring_num = ring_info
+        # tracking current position locally, while beeing in the compute_expectation loop outside
+        if new_loop:
+            self.current_pos = robots[0]
         
         distance = 0 # the traveled/movement distance 
         wait = 0 # machine processing time + arm-movement
         reward = 0 # reward for that step
-
-        # tracking current position locally, while beeing in the expectation loop outside
-        if new_loop:
-            self.current_pos = robots[0]
         
         ##### get specific machine position and compute travling distance
         # TODO: consider distance=0 when moving from RS1 to RS1 for different color ring
@@ -378,13 +377,13 @@ class rcll_strategy():
         ###### computation of reward for this step
         if to_machine == "BS":
             # TODO: can safe wait time in ordering from BS by sending request before arrive there
-            wait += rcll_env.machine_times["BS"][0]
+            wait += rcll_env.machine_times["BS"][0] # mean gaussian
             
             # no reward for getting a base
             reward += 0
             
         elif to_machine == "RS1" or to_machine == "RS2":
-            wait += rcll_env.machine_times["RS"][0] # mean official delay
+            wait += (rcll_env.machine_times["RS"][0] + rcll_env.machine_times["RS"][1]) / 2 # mean official delay
             
             ### consider additional bases and reward
             # figure out if current ring color need additional bases
@@ -432,7 +431,7 @@ class rcll_strategy():
                     
         elif to_machine == "CS1" or to_machine == "CS2":
             # buffer cap
-            wait += rcll_env.machine_times["CS"][0]
+            wait += (rcll_env.machine_times["CS"][0] + rcll_env.machine_times["CS"][1]) / 2 # mean official delay
 #                wait += 3 * 2 # traveling around the machine can be done during buffering
             # reward for buffering a cap
             reward += rcll_env.PRODUCTION_POINTS_RETRIEVE_CAP
@@ -446,12 +445,12 @@ class rcll_strategy():
             
             
             # mount cap
-            wait += rcll_env.machine_times["CS"][0]
+            wait += (rcll_env.machine_times["CS"][0] + rcll_env.machine_times["CS"][1]) / 2 # mean official delay
             # reward fo mount cap
             reward += rcll_env.PRODUCTION_POINTS_MOUNT_CAP
             
         elif to_machine == "DS":
-            wait += rcll_env.machine_times["DS"][0]
+            wait += (rcll_env.machine_times["DS"][0] + rcll_env.machine_times["DS"][1]) / 2 # mean official delay
             
             # comsidering delivery window; accounting for next E_time update
             E_delivery = E_delivery + distance * rcll_env.move_mean + wait
@@ -468,7 +467,7 @@ class rcll_strategy():
             
         elif to_machine == "SS":
             # TODO: can safe time in ordering from SS by sending request before arrive there
-            wait += rcll_env.machine_times["SS"][0]
+            wait += rcll_env.machine_times["SS"][0] # mean gaussian
             
             reward += rcll_env.PRODUCTION_POINTS_SS_RETRIEVAL # listed cost
 
@@ -711,9 +710,8 @@ class rcll_env():
     
     def stage_to_machine(self, stage, order):
         """ correct processing_order encoding to actual next machine """
-        
-        ring_col = None
         ring_pos = None
+        ring_col = None
         ring_num = None
         to_machine = None
         
@@ -725,7 +723,7 @@ class rcll_env():
             ring_num = 3 - order[1:4].count(0)
             # early exit if ring does not exist
             if ring_col == 0:
-                return to_machine, [ring_pos, ring_col, ring_num]
+                return to_machine, None
             
             # figure out where we can get it
             if ring_col in self.rings[0]:
@@ -773,11 +771,11 @@ class rcll_env():
         
         
         new_loop = True # making strategy class aware of expectation loops
-        for stage in processing[cont:]:            
+        for stage in processing[cont:]:
             # correct processing_order to actual next machine; ring_info= [position, color, number]
             to_machine, ring_info = self.stage_to_machine(stage, order)
             # check if it has ring on this slot; otherwise it is an non-existent processing step
-            if ring_info[1] == 0:
+            if ring_info == None:
                 continue
             
             E_delivery = self.time + E_time + first_E_time
