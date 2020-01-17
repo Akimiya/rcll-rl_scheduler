@@ -348,7 +348,7 @@ class rcll_strategy():
     def __init__(self):
         self.current_pos = None
     
-    def update_game_param(self, machines, ring_additional_bases, ring_buf_bases):
+    def sync_game_param(self, machines, ring_additional_bases, ring_buf_bases):
         self.machines = machines
         self.ring_additional_bases = ring_additional_bases
         self.ring_buf_bases = ring_buf_bases
@@ -371,7 +371,7 @@ class rcll_strategy():
         self.current_pos = next_pos # we now made the step to next machine
         
         # assume each step involves grapping and placing a product at least once
-        wait += rcll_env.grap_and_place_mean
+        wait += rcll_env.grab_and_place_mean
         
         ###### additional wait time per machine; assumed after we arrive and do process there
         ###### computation of reward for this step
@@ -412,7 +412,7 @@ class rcll_strategy():
                 extra = self.current_pos.distance(self.machines["BS"]) * 2 # 2 for back-forth
                 
                 distance += extra * missing_bases
-                wait += rcll_env.grap_and_place_mean * missing_bases # assumption on lost time grapping bases
+                wait += rcll_env.grab_and_place_mean * missing_bases # assumption on lost time grapping bases
                 
                 # additional points for base feeded into RS
                 reward += rcll_env.PRODUCTION_POINTS_ADDITIONAL_BASE * missing_bases
@@ -441,7 +441,7 @@ class rcll_strategy():
             distance_rs1 = self.current_pos.distance(self.machines["RS1"])
             distance_rs2 = self.current_pos.distance(self.machines["RS2"])
             wait += min(distance_rs1, distance_rs2) * 2 # 2 for back-forth
-            wait += rcll_env.grap_and_place_mean # assumption on lost time grapping clear bases
+            wait += rcll_env.grab_and_place_mean # assumption on lost time grapping clear bases
             
             
             # mount cap
@@ -491,8 +491,8 @@ class rcll_env():
     # 2017 Carologistics needs 68sec for adjusting grapping and plaing on CS
     # they need 45sec for grap, move and place products (10~30sec move and adjust)
     # Rayleigh (or Chi) distribution may also be an option
-    grap_and_place_mean = 30
-    grap_and_place_var = 7
+    grab_and_place_mean = 30
+    grab_and_place_var = 7
     
     # each machine has its own processing time; some are improvised gaussian format: [mean, var]
     machine_times = {
@@ -1011,7 +1011,7 @@ class rcll_env():
         
         
         # update game-constant parameters for the strategy as well
-        self.strategy.update_game_param(self.machines, self.ring_additional_bases, self.ring_buf_bases)
+        self.strategy.sync_game_param(self.machines, self.ring_additional_bases, self.ring_buf_bases)
         
         
         return self.get_observation()
@@ -1069,7 +1069,7 @@ class rcll_env():
             time_wait += self.get_normal(self.machine_times["BS"][0], self.machine_times["BS"][1])
             
             # unavoidable time consumption; here we only grap and thus half
-            time_mechanical += self.get_normal(self.grap_and_place_mean / 2, self.grap_and_place_var / 2)
+            time_mechanical += self.get_normal(self.grab_and_place_mean / 2, self.grab_and_place_var / 2)
             
             # no reward for getting a base
             reward = 0
@@ -1094,7 +1094,7 @@ class rcll_env():
             
             
             # placing product 
-            time_mechanical += self.get_normal(self.grap_and_place_mean, self.grap_and_place_var)
+            time_mechanical += self.get_normal(self.grab_and_place_mean, self.grab_and_place_var)
             pass
             
         elif current_stage == "DS":
@@ -1173,7 +1173,7 @@ if __name__ == "__main__":
                      'DS': field_pos(2.5, 4.5)}
     self.ring_additional_bases = [3, 1, 2, 4]
     self.rings = [[3, 4], [1, 2]]
-    self.strategy.update_game_param(self.machines, self.ring_additional_bases, self.ring_buf_bases)
+    self.strategy.sync_game_param(self.machines, self.ring_additional_bases, self.ring_buf_bases)
     
     assert False
     
