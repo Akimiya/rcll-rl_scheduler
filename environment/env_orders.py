@@ -347,8 +347,13 @@ class rcll_strategy():
     """
     def __init__(self):
         self.current_pos = None
+        self.current_ordering = None
+        
+    def update_order_probabilities(self, prob):
+        # track the RL order probablilities and reference as a priority list
+        self.current_ordering = prob
     
-    def sync_game_param(self, machines, ring_additional_bases, ring_buf_bases):
+    def update_game_param(self, machines, ring_additional_bases, ring_buf_bases):
         self.machines = machines
         self.ring_additional_bases = ring_additional_bases
         self.ring_buf_bases = ring_buf_bases
@@ -1012,7 +1017,7 @@ class rcll_env():
         
         
         # update game-constant parameters for the strategy as well
-        self.strategy.sync_game_param(self.machines, self.ring_additional_bases, self.ring_buf_bases)
+        self.strategy.update_game_param(self.machines, self.ring_additional_bases, self.ring_buf_bases)
         
         
         return self.get_observation()
