@@ -16,7 +16,7 @@ import numpy as np
 import random
 import os
 
-from env_orders import env_rcll
+from env_orders import rcll_env, rcll_strategy
 
 
 # Own Tensorboard class, as per default it updates on every .fit()
@@ -105,7 +105,7 @@ class DQNAgent:
         model.add(Dense(64))
 
         # the output llayer, ACTION_SPACE_SIZE = how many choices (9)
-        model.add(Dense(env.ACTION_SPACE_SIZE, activation='linear'))
+        model.add(Dense(env.action_space, activation='linear'))
         # adam optimizer with learning rate lr and track accuracy
         model.compile(loss="mse", optimizer=Adam(lr=0.001), metrics=['accuracy'])
         return model
@@ -113,20 +113,21 @@ class DQNAgent:
     def create_model_simple(self):
         model = Sequential()
         
+        flat_space = env.observation_space[0][0] * env.observation_space[0][1] + env.observation_space[1]
         # input is the 4 elements long touple
         # , kernel_initializer='uniform'
-        model.add(Dense(50, activation='relu', input_shape=(19,)))
-        model.add(Dense(50, activation='relu'))
-        model.add(Dense(50, activation='relu'))
-        model.add(Dense(50, activation='relu'))
-        model.add(Dense(50, activation='relu'))
-        model.add(Dense(50, activation='relu'))
+        model.add(Dense(100, activation='relu', input_shape=(flat_space,)))
+        model.add(Dense(100, activation='relu'))
+        model.add(Dense(100, activation='relu'))
+        model.add(Dense(100, activation='relu'))
+        model.add(Dense(100, activation='relu'))
+        model.add(Dense(100, activation='relu'))
 
         # the output llayer, ACTION_SPACE_SIZE = how many choices (9)
-        model.add(Dense(env.ACTION_SPACE_SIZE, activation='linear'))
+        model.add(Dense(env.action_space, activation='softmax'))
         
         # adam optimizer with learning rate lr and track accuracy
-        optimizer = Adam(lr=0.001)
+        optimizer = 'rmsprop' #Adam(lr=0.001)
         model.compile(loss="mse", optimizer=optimizer, metrics=['accuracy'])
         
         return model
@@ -139,7 +140,7 @@ class DQNAgent:
     # Queries main network for Q values given current observation space (environment state)
     def get_qs(self, state):
         # unpack state with the * Elements from this iterable are treated as if they were additional positional arguments
-        s = np.array(state)
+        s = np.append(state[0].flatten(), state[1])
         if self.simple:
             ret = self.model.predict(s[np.newaxis,:] / self.norm_factor)
         else:
@@ -206,6 +207,9 @@ class DQNAgent:
             self.target_model.set_weights(self.model.get_weights()) # copy weights
             self.target_update_counter = 0
         
+        
+        
+        
 if __name__ == "__main__":
     ### globals
     DISCOUNT = 0.99
@@ -231,7 +235,8 @@ if __name__ == "__main__":
     
     
     ### Environment setup
-    env = env_rcll(normalize=True)
+    strat = rcll_strategy()
+    env = rcll_env(strat, normalize=True)
 
     # For stats
     ep_rewards = [-200]

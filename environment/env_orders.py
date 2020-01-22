@@ -56,14 +56,14 @@ class RefBox_recreated():
             ]
     
     # from facts.clp inside "deffacts startup" the base definitions; order=> {cyan: magenta}
-    mirror_orientation_def = {0: 180,
-                                  45: 135,
-                                  90: 90,
-                                 135: 45,
-                                 180: 0,
-                                 225: 315,
-                                 270: 270,
-                                 315: 225}
+    mirror_orientation_def = { 0: 180,
+                              45: 135,
+                              90: 90,
+                             135: 45,
+                             180: 0,
+                             225: 315,
+                             270: 270,
+                             315: 225}
 
     # from globals.clp
     DOWN_TYPES = ["RS", "CS"]
@@ -71,11 +71,11 @@ class RefBox_recreated():
     DOWN_TIME_MAX = 60 # 120
     PRODUCTION_TIME = 1020
     
-    def __init__(self):
+    def __init__(self, random=None):
         # just in case we want same seed, we need take randomness like the other module
         self.random = SystemRandom()
         
-        # debug for tracking number of errors
+        # local debug parameters for tracking number of errors
         self.solver_errors = 0
         self.solver_runs = 0
         self.solver_time = 0
@@ -532,7 +532,8 @@ class rcll_env():
     def __init__(self, rcll_strategy, RefBox_recreated=None, normalize=False):
         self.random = SystemRandom() # local random number generator
         self.TOTAL_NUM_ORDERS = 8 # warning: currently does not scale everything
-        self.ACTION_SPACE_SIZE = self.TOTAL_NUM_ORDERS + 2 # plus an additional double-slot for double amount (6th) order
+        self.action_space = self.TOTAL_NUM_ORDERS + 2 # plus an additional double-slot for double amount (6th) order
+        self.observation_space = [(4 + 2, self.TOTAL_NUM_ORDERS), 4*2 + 1] # shape of matrix, plus the multi_order vector
         
         # TODO: return normalized parameters
         self.normalize = normalize
@@ -1173,7 +1174,7 @@ if __name__ == "__main__":
                      'DS': field_pos(2.5, 4.5)}
     self.ring_additional_bases = [3, 1, 2, 4]
     self.rings = [[3, 4], [1, 2]]
-    self.strategy.sync_game_param(self.machines, self.ring_additional_bases, self.ring_buf_bases)
+    self.strategy.update_game_param(self.machines, self.ring_additional_bases, self.ring_buf_bases)
     
     assert False
     
